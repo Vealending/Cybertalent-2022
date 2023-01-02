@@ -357,6 +357,46 @@ Den test-instansen som fortsatt sjekker inn så spennende ut...
 
 ## 2.09_cloud-hq
 
+Nå har vi tilgang til både archive@shady-aggregator og kildekoden for skadevaren som er i bruk. Scoreboard-teksten til 2.08 hinter mot den test-3 instansen som sjekker inn hvert 10. sekund.
+
+Det mest logiske er at det er en sårbarhet i skadevaren som vil gi oss tilgang til de som opererer skadevaren.
+Dette fant jeg ikke med det første, så gravde meg ned i et kaninhull som endte med at jeg fikk tilgang til c2-brukeren på shady-aggregator, som var et flagg i umulig-kategorien. Det var gjennom en race condition, og gjennomgangen ligger [nederst](#3413_shady-aggregator_c2).
+
+Men selv tilgang til brukeren som kjørte serveren var ikke det som måtte til får å få tilgang til skurkene. Hver en kommando som blir lastet opp og ned går gjennom ECDSA signatursjekk, og implementasjonen virket nokså plettfri både på serveren og klienten i mine øyne.
+
+Etter mye leting på nettet kom jeg over en sårbarhetskategori som heter Java Deserialization. Etter mange timers lesing gjennom slides og whitepapers på [denne](https://github.com/GrrrDog/Java-Deserialization-Cheat-Sheet#overview) GitHub'en så forstod litt hvordan sårbarheten fungerte, og hvordan den kunne anvendes i denne situasjonen.
+
+I Config.java er det en `readObject()` funksjon som håndterer hvordan et Config-objekt skal leses inn.
+I denne ser vi at den går gjennom alle `pendingCommands`, og kjører de hvis tiden er inne. Dette skjer da altså før noe som helst verifikasjon gjennom ECDSA.
+
+```java
+private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+    id = ois.readUTF();
+    sleepDuration = ois.readInt();
+    serverURL = ois.readUTF();
+    pendingCommands = new ArrayList<Command>();
+    Instant now = Instant.now();
+    int pendingCommandsSize = ois.readInt();
+    for (int i = 0; i < pendingCommandsSize; i++) {
+        Command c = (Command) ois.readObject();
+        if (c.runAfter.isBefore(now))
+            c.execute(System.out, this);
+        else
+            pendingCommands.add(c);
+    }
+}
+```
+
+Klienten mottar kommandoer gjennom `checkInWithC2()` funksjonen til `Client.java`, mer spesifikt disse to linjene:
+
+```java
+ObjectInputStream in = new ObjectInputStream(conn.getInputStream());
+Command c = (Command) in.readObject();
+```
+
+Selv om det mottatte objektet blir kastet til et `Command` object, så vil `readObject()` bli eksekvert før dette.
+Det spiller da ingen rolle om denne kastingen feiler, vi bryr oss bare om `readObject()`.
+
 Java deserializing on the Config object equals RCE.
 
 ```text

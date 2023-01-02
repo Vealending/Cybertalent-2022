@@ -1,5 +1,5 @@
-import struct
 import nvector as nv
+import struct
 import folium
 import math
 
@@ -99,7 +99,7 @@ def desired_target_as_vector(sphere, target):
 
     desired_target = sphere.GeoPoint(latitude=target[0], longitude=target[1], z=0, degrees=True)
     ecef_vectors = desired_target.to_ecef_vector().pvector
-    print("ECEF vectors:", *ecef_vectors)
+    print("Target ECEF vectors:", *ecef_vectors)
     print("_target value:", struct.pack('d' * len(ecef_vectors), *ecef_vectors).hex(), end="\n\n")
 
 
@@ -111,12 +111,16 @@ def get_distance(origin, target):
 
 def distance_to_missile_targets(sphere):
 
+    data = []
     for submarine, missile_no, tof, target in missile_data:
         submarine_data = submarine_coordinates[submarine]
         submarine_location = sphere.GeoPoint(latitude=submarine_data[0], longitude=submarine_data[1], z=0, degrees=True)
         missile_target = nv.ECEFvector(target, sphere).to_geo_point()
         distance = get_distance(submarine_location, missile_target)
-        print("Distance:", distance, "- Time of flight:", tof, "- _tof:", distance / tof)
+        data.append((distance, tof, distance/tof))
+
+    for distance, tof, distance_tof in sorted(data, key=lambda x: x[0]):
+        print("Distance:", distance, "- Time of Flight:", tof, "- Distance/TOF:", distance_tof)
     print()
 
 
@@ -130,7 +134,7 @@ def distance_to_desired_target(sphere, target_coordinates):
         distance = get_distance(submarine_location, desired_target)
         distances.add((submarine, distance, distance / 1500))
     
-    for submarine, distance, _tof in distances:
+    for submarine, distance, _tof in sorted(distances, key=lambda x: x[0]):
         _tof = round(_tof, -2)
         print(f"Submarine {submarine} - Distance: {distance} - Recommended _tof: {_tof} ({tof_pack(_tof)})")
     print()
@@ -138,21 +142,22 @@ def distance_to_desired_target(sphere, target_coordinates):
 
 def tof_pack(num):
 
-  num_bytes = struct.pack('>d', num)[::-1]
-  num_hex = ''.join('{:02x}'.format(b) for b in num_bytes)[-8:]
-  return num_hex
+    num_bytes = struct.pack('>d', num)[::-1]
+    num_hex = ''.join('{:02x}'.format(b) for b in num_bytes)[-8:]
+    return num_hex
 
 
 def ecef_vector_to_lat_lon(vector):
-  [[x], [y], [z]] = vector
-  lon = math.atan2(y, x)
-  hyp = math.sqrt(x ** 2 + y ** 2)
-  lat = math.atan2(z, hyp)
 
-  lat = lat * 180 / math.pi
-  lon = lon * 180 / math.pi
+    [[x], [y], [z]] = vector
+    lon = math.atan2(y, x)
+    hyp = math.sqrt(x ** 2 + y ** 2)
+    lat = math.atan2(z, hyp)
 
-  return lat, lon
+    lat = lat * 180 / math.pi
+    lon = lon * 180 / math.pi
+
+    return lat, lon
 
 
 def create_map(sphere):

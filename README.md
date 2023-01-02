@@ -3,6 +3,8 @@
 Cybertalent er 
 
 
+---
+
 ## 2_01 - pcap_fil
 
 Når vi åpner PCAP-filen så er det en HTTP pakke som skiller seg ut:
@@ -26,9 +28,12 @@ Poeng:    10
 Gratulerer, korrekt svar!
 ```
 
+---
+
 ## 2.02_anvilnotes
 
-
+INTREP gir oss en pekepinne mot en nettside som kan nås på ANVILNOTES.CYBERTALENT.NO.
+Dette er tilsynelatende en helt vanlig nettside hvor man kan lage bruker, logge inn og lagre notater i skyen.
 
 ```text
 Kategori: 2. Oppdrag
@@ -39,6 +44,8 @@ Poeng:    10
 Admin sine notater, som han laget før id ble randomisert...
 Gir dette noen hint til hvordan du kan få mer tilgang?
 ```
+
+---
 
 ## 2.03_anvilnotes_admin
 
@@ -80,6 +87,8 @@ Poeng:    10
 
 Som admin har du kanskje tilgang til mer funksjonalitet?
 ```
+
+---
 
 ## 2.04_anvilnotes_password
 
@@ -211,6 +220,8 @@ Poeng:    10
 Hvis aktøren har benyttet denne tjenesten finner vi kanskje noen interessante notater.
 ```
 
+---
+
 ## 2.05_anvilnotes_source
 
 Hvis vi logger på med brukernavn og passord nevnt ovenfor så finner vi to notater:
@@ -232,6 +243,8 @@ Poeng:    10
 Dette så interessant ut!
 En samarbeidende tjeneste i Pseudova vurderer at dette meget sannsynlig er kildekoden for skadevaren benyttet i angrepene mot kraftverket deres.
 ```
+
+---
 
 ## 2.06_pwr-ws-caf5db
 
@@ -265,6 +278,8 @@ Brukeren har også privatnøkkel for ssh-tilgang til sin egen maskin. Jeg legger
 Ny fil: /home/login/2_oppdrag/sshkey_pwr-ws-caf5db
 ```
 
+---
+
 ## 2.07_shady-aggregator
 
 When listing the processes using `ps -aux`, we can see an active SSH connection:
@@ -290,6 +305,8 @@ Utmerket! Denne maskinen administrerer et botnett.
 
 Det burde være mulig å hoppe videre til de andre enhetene som kontrolleres.
 ```
+
+---
 
 ## 2.08_client_list
 
@@ -336,6 +353,7 @@ En liste over alle de infiserte klientene deres?
 Den test-instansen som fortsatt sjekker inn så spennende ut...
 ```
 
+---
 
 ## 2.09_cloud-hq
 
@@ -354,8 +372,9 @@ Dette ser ut som operatøren bak angrepet mot kraftverket. Jeg legger ssh-nøkke
 Ny fil: /home/login/2_oppdrag/sshkey_cloud-hq
 ```
 
-## 2.10_infrastruktur
+---
 
+## 2.10_infrastruktur
 
 
 ```text
@@ -373,6 +392,8 @@ Forbered for fremtidige operasjoner og avvent ytterligere ordre.
 Ny fil: /home/login/2_oppdrag/INTREP-2.txt
 ```
 
+---
+
 ## 2.11_aurum_shell
 
 Vi bruker samme exploit som fra 2.09, men bytter ut ID'en til aurum sin.
@@ -389,6 +410,8 @@ Hva brukes denne maskinen til?
 Ny fil: /home/login/2_oppdrag/sshkey_aurum
 ```
 
+---
+
 ## 2.12_missile_targets
 
 ```text
@@ -404,8 +427,34 @@ Ny fil: /home/login/2_oppdrag/worst_case_scenario.jpg
 ```
 ![Worst case scenario](images/worst_case_scenario.jpg)
 
+---
+
 ## 2.13_findflag
 
+
+
+
+```C
+  input = read(*(_session + 1), &read_buf, 1);
+  if (input == 1) {
+    _history.0 = read_buf | _history.0 << 8;
+    if (_history.0 == 0x726f6f646b636162) {
+      **_session = **_session ^ 2;
+    }
+```
+
+Den leser en enkelt byte med data fra en fra `read()`, lagre den i en buffer kalt `read_buf`. 
+Deretter utfører den en bitvis venstre skyving på `_history.0` og lagrer resultatet tilbake i `_history.0`, før den ORer den med `read_buf`.
+Lettere sagt: Opp til 8 av bokstavene vi skriver inn blir lagret i `_history.0`.
+
+`0x726f6f646b636162` er hex for `roodkcab`, som er backdoor baklengs.
+Når `_history` innheolder den verdien, så blir privilegiet vår forhøyet til `Developer`.
+
+Nå som vi er `Developer` så kan vi rename brukeren vår. Grunnet feil i programvare (som vil ta litt for mye tid å forklare), så får vi `SYSTEM` privilegier om vi kaller oss `!`.
+
+Vi er nå priviligert nok til å kjøre programmer, og når vi kjører `findflag.prg` får vi opp dette flotte bildet:
+
+![2.13_flag](images/2.13_flag.png)
 
 ```
 Kategori: 2. Oppdrag
@@ -416,6 +465,7 @@ Poeng:    4
 Herlig! Vi har nå lov til å kjøre programmer. Kan du bruke dette til noe?
 ```
 
+---
 
 ## 2.14_multiplier
 
@@ -431,6 +481,8 @@ Poeng:    5
 Dette ser ut til å være privatnøkkelen som de bruker i ECDSA-signeringen sin. Som det kjente ordtaket går -- "Never roll your own crypto". La oss håpe denne nøkkelen kan brukes til noe nyttig :)
 ```
 
+---
+
 ## 2.15_firmware_staged
 
 ```text
@@ -443,10 +495,156 @@ Wow! Firmware staged for flash når ubåten dykker opp! Oppdragsgiver ønsker at
 Siden alle missilene i hver ubåt skal til samme mål, må firmware være identisk for hvert missil per ubåt.
 ```
 
+---
+
 ## 2.16-20_submarine_0-4
 
+Her ble det litt vanskelig.
 
-https://github.com/pbrod/Nvector
+
+
+
+
+```python
+import array
+
+_target = bytearray([0x84, 0x02, 0xf0, 0xe5, 0x7a, 0x40, 0x4e, 0x41, 0x9c, 0x1f, 0xed, 0xbd, 0x9b, 0xec, 0xbf, 0xc0, 0x74, 0xf1, 0x9c, 0xd6, 0xcd, 0x05, 0x53, 0x41])
+print(*array.array('d', bytearray(_target)))
+```
+
+
+
+
+Jeg brukte [Nvector](https://github.com/pbrod/Nvector) for å gjøre de geometriske kalkulasjonene.
+
+```python
+import nvector
+import struct
+
+target_coordinates = (24.1851, -43.3704)
+sphere = nvector.FrameE(a=6371e3, f=0)
+
+target = sphere.GeoPoint(latitude=target_coordinates[0], longitude=target_coordinates[1], z=0, degrees=True)
+ecef_vectors = target.to_ecef_vector().pvector
+print("Target ECEF vectors:", *ecef_vectors)
+print("_target value:", struct.pack('d' * len(ecef_vectors), *ecef_vectors).hex())
+```
+
+```text
+Target ECEF vectors: [4224766.3303444] [-3991030.54681077] [2610108.35568405]
+_target value: d55c2495bf1d50412de5fd45fb724ec10c0e872ddee94341
+```
+
+
+
+
+
+
+
+
+
+
+å regne ut distansen mellom hver ubåt og dens respektive missilers mål.
+
+```text
+Distance: 348395.48975179956 - Time of Flight: 500.0 - Distance/TOF: 696.7909795035991
+Distance: 500263.3985159643 - Time of Flight: 600.0 - Distance/TOF: 833.7723308599404
+Distance: 511762.1047280655 - Time of Flight: 600.0 - Distance/TOF: 852.9368412134424
+Distance: 520499.4149202836 - Time of Flight: 900.0 - Distance/TOF: 578.3326832447596
+Distance: 590144.6263528519 - Time of Flight: 600.0 - Distance/TOF: 983.5743772547531
+Distance: 732878.7025049966 - Time of Flight: 1300.0 - Distance/TOF: 563.7528480807666
+Distance: 808640.5369362447 - Time of Flight: 1080.0 - Distance/TOF: 748.7412379039303
+Distance: 863068.4010189358 - Time of Flight: 1080.0 - Distance/TOF: 799.1374083508665
+Distance: 933003.5862811609 - Time of Flight: 1080.0 - Distance/TOF: 863.8922095195935
+Distance: 945357.6059941095 - Time of Flight: 1080.0 - Distance/TOF: 875.3311166612125
+Distance: 964152.5410666476 - Time of Flight: 1080.0 - Distance/TOF: 892.73383432097
+Distance: 966287.4969199213 - Time of Flight: 1000.0 - Distance/TOF: 966.2874969199213
+Distance: 981188.6638837567 - Time of Flight: 1080.0 - Distance/TOF: 908.5080221145896
+Distance: 1009708.3154344284 - Time of Flight: 1080.0 - Distance/TOF: 934.91510688373
+Distance: 1012135.9835278065 - Time of Flight: 1000.0 - Distance/TOF: 1012.1359835278065
+Distance: 1019896.8575486206 - Time of Flight: 1080.0 - Distance/TOF: 944.3489421746486
+Distance: 1041037.6111341281 - Time of Flight: 1100.0 - Distance/TOF: 946.3978283037528
+Distance: 1082799.317533042 - Time of Flight: 1100.0 - Distance/TOF: 984.3630159391291
+Distance: 1150927.3278368798 - Time of Flight: 1300.0 - Distance/TOF: 885.3287137206768
+Distance: 1170456.4550821886 - Time of Flight: 1300.0 - Distance/TOF: 900.3511192939912
+Distance: 1209191.039503127 - Time of Flight: 1200.0 - Distance/TOF: 1007.6591995859393
+Distance: 1217874.0369089686 - Time of Flight: 1100.0 - Distance/TOF: 1107.1582153717895
+Distance: 1224359.5574722323 - Time of Flight: 1200.0 - Distance/TOF: 1020.2996312268602
+Distance: 1246719.4941068373 - Time of Flight: 1500.0 - Distance/TOF: 831.1463294045582
+Distance: 1266109.9669538387 - Time of Flight: 1400.0 - Distance/TOF: 904.3642621098847
+Distance: 1293026.5173402096 - Time of Flight: 1200.0 - Distance/TOF: 1077.522097783508
+Distance: 1311433.3252238766 - Time of Flight: 1000.0 - Distance/TOF: 1311.4333252238766
+Distance: 1339603.8980102893 - Time of Flight: 1100.0 - Distance/TOF: 1217.8217254638994
+Distance: 1351068.7739735628 - Time of Flight: 1600.0 - Distance/TOF: 844.4179837334767
+Distance: 1405361.7044354093 - Time of Flight: 1100.0 - Distance/TOF: 1277.6015494867356
+Distance: 1411325.99611136 - Time of Flight: 1100.0 - Distance/TOF: 1283.023632828509
+Distance: 1450589.2628414233 - Time of Flight: 1200.0 - Distance/TOF: 1208.824385701186
+Distance: 1453023.3903872136 - Time of Flight: 1700.0 - Distance/TOF: 854.7196414042432
+Distance: 1468197.1626789959 - Time of Flight: 1300.0 - Distance/TOF: 1129.3824328299968
+Distance: 1506467.74026547 - Time of Flight: 1100.0 - Distance/TOF: 1369.5161275140636
+Distance: 1519089.0211525294 - Time of Flight: 1500.0 - Distance/TOF: 1012.7260141016862
+Distance: 1565793.7530927446 - Time of Flight: 1500.0 - Distance/TOF: 1043.8625020618297
+Distance: 1580386.814366429 - Time of Flight: 1500.0 - Distance/TOF: 1053.5912095776193
+Distance: 1609795.4943599436 - Time of Flight: 1600.0 - Distance/TOF: 1006.1221839749647
+Distance: 1641568.9514015021 - Time of Flight: 1700.0 - Distance/TOF: 965.62879494206
+Distance: 1710921.043500996 - Time of Flight: 1700.0 - Distance/TOF: 1006.42414323588
+Distance: 1732740.667998054 - Time of Flight: 1300.0 - Distance/TOF: 1332.87743692158
+Distance: 1747809.0476979413 - Time of Flight: 1600.0 - Distance/TOF: 1092.3806548112134
+Distance: 1772308.7041964093 - Time of Flight: 1300.0 - Distance/TOF: 1363.3143878433918
+Distance: 1782415.0479200284 - Time of Flight: 1800.0 - Distance/TOF: 990.2305821777936
+Distance: 1819740.3098170958 - Time of Flight: 1900.0 - Distance/TOF: 957.7580577984714
+Distance: 1853500.774347373 - Time of Flight: 1900.0 - Distance/TOF: 975.5267233407227
+Distance: 1889860.569262299 - Time of Flight: 2000.0 - Distance/TOF: 944.9302846311494
+Distance: 1897069.5809633008 - Time of Flight: 1500.0 - Distance/TOF: 1264.7130539755337
+Distance: 1912908.8580703784 - Time of Flight: 1800.0 - Distance/TOF: 1062.7271433724325
+Distance: 1914674.369283808 - Time of Flight: 2000.0 - Distance/TOF: 957.337184641904
+Distance: 1932985.6228606955 - Time of Flight: 1600.0 - Distance/TOF: 1208.1160142879346
+Distance: 1946924.4505204486 - Time of Flight: 2000.0 - Distance/TOF: 973.4622252602243
+Distance: 2007013.7951378133 - Time of Flight: 1550.0 - Distance/TOF: 1294.847609766331
+Distance: 2033289.0976990887 - Time of Flight: 1900.0 - Distance/TOF: 1070.152156683731
+Distance: 2082487.3067442677 - Time of Flight: 1800.0 - Distance/TOF: 1156.9373926357043
+Distance: 2101044.0567982495 - Time of Flight: 1600.0 - Distance/TOF: 1313.152535498906
+Distance: 2137414.664839351 - Time of Flight: 2000.0 - Distance/TOF: 1068.7073324196756
+Distance: 2177246.8662748435 - Time of Flight: 1400.0 - Distance/TOF: 1555.1763330534595
+Distance: 2204009.2435102407 - Time of Flight: 1500.0 - Distance/TOF: 1469.3394956734937
+Distance: 2207768.402966359 - Time of Flight: 2000.0 - Distance/TOF: 1103.8842014831796
+Distance: 2215078.945614269 - Time of Flight: 1400.0 - Distance/TOF: 1582.199246867335
+Distance: 2231092.6606392763 - Time of Flight: 2000.0 - Distance/TOF: 1115.5463303196382
+Distance: 2239277.0724439276 - Time of Flight: 1700.0 - Distance/TOF: 1317.2218073199574
+Distance: 2257608.199286598 - Time of Flight: 1600.0 - Distance/TOF: 1411.0051245541235
+Distance: 2266828.433244026 - Time of Flight: 1600.0 - Distance/TOF: 1416.767770777516
+Distance: 2295831.850452401 - Time of Flight: 1700.0 - Distance/TOF: 1350.48932379553
+Distance: 2299594.3277599183 - Time of Flight: 1600.0 - Distance/TOF: 1437.246454849949
+Distance: 2329805.381936575 - Time of Flight: 2000.0 - Distance/TOF: 1164.9026909682875
+Distance: 2330857.228655695 - Time of Flight: 2100.0 - Distance/TOF: 1109.932013645569
+Distance: 2366856.8442280795 - Time of Flight: 1600.0 - Distance/TOF: 1479.2855276425498
+Distance: 2558155.198729103 - Time of Flight: 1750.0 - Distance/TOF: 1461.8029707023445
+Distance: 2672868.1646775766 - Time of Flight: 1800.0 - Distance/TOF: 1484.9267581542092
+Distance: 2679267.842135778 - Time of Flight: 1800.0 - Distance/TOF: 1488.4821345198768
+Distance: 2696890.090424191 - Time of Flight: 2000.0 - Distance/TOF: 1348.4450452120957
+Distance: 2960229.4683541474 - Time of Flight: 2000.0 - Distance/TOF: 1480.1147341770736
+Distance: 2962600.502655174 - Time of Flight: 2000.0 - Distance/TOF: 1481.3002513275871
+Distance: 3064300.340851306 - Time of Flight: 2000.0 - Distance/TOF: 1532.150170425653
+Distance: 3498845.2588418713 - Time of Flight: 2200.0 - Distance/TOF: 1590.384208564487
+Distance: 3682334.5674927537 - Time of Flight: 2200.0 - Distance/TOF: 1673.7884397694336
+```
+
+Man kan se at relasjonen mellom flytiden og distansen blir i snitt høyere desto lengre distansen er. I tillegg ser vi at det er litt slingringsmonn i flytiden.
+Basert på distansen som missilene måtte gå for å treffe midten av atlanterhavet så kom jeg frem til at `TOF ~= Distance / 1500`.
+
+Etter å ha regnet det ut fikk jeg dette resultatet:
+
+```text
+Submarine 1 - Distance: 4148201.467647918 - Recommended _tof: 2800.0 (00e0a540)
+Submarine 2 - Distance: 4740515.669383748 - Recommended _tof: 3200.0 (0000a940)
+Submarine 3 - Distance: 6031013.339962457 - Recommended _tof: 4000.0 (0040af40)
+Submarine 4 - Distance: 3509224.261450487 - Recommended _tof: 2300.0 (00f8a140)
+Submarine 5 - Distance: 3177066.054664542 - Recommended _tof: 2100.0 (0068a040)
+```
+
+Hex-verdien i parantes er de rå bytene som _tof skal patches med.
+
+
 
 ```text
 Kategori: 2. Oppdrag
@@ -456,6 +654,8 @@ Poeng:    5
 
 For mission complete må du konkatenere flaggene for 2.16 - 2.20
 ```
+
+---
 
 ## 2.21_mission_complete
 
@@ -474,6 +674,7 @@ Ny fil: /home/login/2_oppdrag/mission_complete.jpg
 
 ![Mission complete!](images/mission_complete.jpg)
 
+---
 
 ## 3.4.13_shady-aggregator_c2
 

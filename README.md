@@ -475,16 +475,16 @@ Ny fil: /home/login/2_oppdrag/worst_case_scenario.jpg
 
 
 ```C
-  input = read(*(_session + 1), &read_buf, 1);
-  if (input == 1) {
+input = read(*(_session + 1), &read_buf, 1);
+if (input == 1) {
     _history.0 = read_buf | _history.0 << 8;
     if (_history.0 == 0x726f6f646b636162) {
-      **_session = **_session ^ 2;
-    }
+        **_session = **_session ^ 2;
+}
 ```
 
-Den leser en enkelt byte med data fra en fra `read()`, lagre den i en buffer kalt `read_buf`. 
-Deretter utfører den en bitvis venstre skyving på `_history.0` og lagrer resultatet tilbake i `_history.0`, før den ORer den med `read_buf`.
+Den leser en enkelt byte med data fra `read()`, og lagrer den i en buffer kalt `read_buf`. 
+Deretter utfører den en bitvis venstre skyving på `_history.0` og lagrer resultatet tilbake i `_history.0`, før den ORer den med `read_buf`. Change this #######
 Lettere sagt: Opp til 8 av bokstavene vi skriver inn blir lagret i `_history.0`.
 
 `0x726f6f646b636162` er hex for `roodkcab`, som er backdoor baklengs.
@@ -541,21 +541,96 @@ Siden alle missilene i hver ubåt skal til samme mål, må firmware være identi
 
 Her ble det litt vanskelig.
 
+Jeg brukte Ghidra for å reverse-engineere, da IDA kun støtter ARM om man er søkkrik.
 
+I funksjonen `boot_banner()` kan vi se følgende:
 
+```
+printk("*** Booting Zephyr OS build zephyr-v3.2.0-2532-g5fab7a5173f6 ***\n");
+```
 
+Zephyr OS er et real-time operativsystem laget for innebygde enheter, og best av alt; det er open-source. Det er en stor hjelp å kunne slå opp definisjonene på datastrukturer, funksjoner og datatyper mens man reverse-engineerer.
 
-```python
-import array
+Jeg brukte en god stund på å navigere den dekompilerte koden, og stirret på de forskjellige funksjonene til de ga noenlunde mening.
 
-_target = bytearray([0x84, 0x02, 0xf0, 0xe5, 0x7a, 0x40, 0x4e, 0x41, 0x9c, 0x1f, 0xed, 0xbd, 0x9b, 0xec, 0xbf, 0xc0, 0x74, 0xf1, 0x9c, 0xd6, 0xcd, 0x05, 0x53, 0x41])
-print(*array.array('d', bytearray(_target)))
+I "Memory Map"-visningen i Ghidra kan vi se et minnesegment som heter `.rocket_parameters`. 
+Innunder denne finner vi etikettene `_tof` og `_target`. Disse navnene er vi bekjent med fra missil-listen vi fikk i [2.12_missile_targets](#212_missile_targets).
+Begge disse to blir aksessert fra `armed_entry()`, mer spesifikt disse linjene av kode:
+
+```C
+zsl_vec_from_arr(&target, _target, param_3, 0, param_1);
+DAT_200009b8 = target;
+DAT_200009bc = PTR_target_vec_69c;
+DAT_200009c4 = gc_init();
+DAT_200009c4 = gc_set_initial_conditions(&DAT_200009b8, extraout_r1, _tof, DAT_00018f34);
+```
+
+Et raskt google-søk peker oss til [Zephyr Scientific Library](https://zephyrproject-rtos.github.io/zscilib/), som inneholder kildekoden for `zsl_vec_from_arr`, samt strukturen og datatypene:
+
+```C
+int zsl_vec_from_arr(struct zsl_vec* v, zsl_real_t* a)
+
+struct zsl_vec {
+    size_t sz;
+    zsl_real_t *data;
+};
+
+typedef double zsl_real_t;
 ```
 
 
 
+Brukte python til å unpacke bytene til 3 doubles:
 
-Jeg brukte [Nvector](https://github.com/pbrod/Nvector) for å gjøre de geometriske kalkulasjonene.
+```python
+import array
+
+_target = [0x84, 0x02, 0xf0, 0xe5, 0x7a, 0x40, 0x4e, 0x41, 0x9c, 0x1f, 0xed, 0xbd, 0x9b, 0xec, 0xbf, 0xc0, 0x74, 0xf1, 0x9c, 0xd6, 0xcd, 0x05, 0x53, 0x41]
+print(*array.array('d', bytearray(_target)))
+```
+
+Det ga følgende output:
+
+```text
+3965173.7963870186 -8172.608366794793 4986679.353329051
+```
+
+Det ser akkurat ut som target-verdiene for SUB:1 MIS:1 som dukket opp i listen over missiler! Vi er på rett spor.
+
+Jeg brukte litt tid på å lese meg opp på koordinatsystemer for å finne ut hva disse tallene betydde, og kom frem til det var ECEF (Earth-centered, Earth-fixed) koordinater vi jobbet med.
+For å dobbeltsjekke dette prøvde jeg å konvertere fra ECEF til lat/lon ved hjelp av konvertere på nett, men de ga et resultat som virket feil.
+
+Så da spørte jeg pent ChatGPT om å lage en til meg:
+
+```python
+import math
+
+def ecef_vector_to_lat_lon(vector):
+    x, y, z = vector
+    lon = math.atan2(y, x)
+    hyp = math.sqrt(x ** 2 + y ** 2)
+    lat = math.atan2(z, hyp)
+
+    lat = lat * 180 / math.pi
+    lon = lon * 180 / math.pi
+
+    return lat, lon
+
+_target = [3965173.80, -8172.61, 4986679.35]
+print(ecef_vector_to_lat_lon(_target))
+```
+
+Output:
+
+```python
+(51.50986495591076, -0.11809202349170798)
+```
+
+Plugger vi disse koordinatene inn i [Google Maps](https://www.google.no/maps/place/51%C2%B030'35.5%22N+0%C2%B007'05.1%22W/@51.5098683,-0.120286,17z/data=!3m1!4b1!4m5!3m4!1s0x0:0xf5e2635478a5eaeb!8m2!3d51.509865!4d-0.118092) så havner vi midt i sentrum av London. Nice! 
+
+
+
+Jeg brukte [Nvector](https://github.com/pbrod/Nvector) for å gjøre de geometriske kalkulasjonene. Lagde dette for å gjøre om lat/lon koordinatene vi fikk om til ECEF, for så å pakke de til rett dataformat:
 
 ```python
 import nvector
@@ -566,17 +641,25 @@ sphere = nvector.FrameE(a=6371e3, f=0)
 
 target = sphere.GeoPoint(latitude=target_coordinates[0], longitude=target_coordinates[1], z=0, degrees=True)
 ecef_vectors = target.to_ecef_vector().pvector
+
 print("Target ECEF vectors:", *ecef_vectors)
 print("_target value:", struct.pack('d' * len(ecef_vectors), *ecef_vectors).hex())
 ```
 
-```text
+Output:
+
+```
 Target ECEF vectors: [4224766.3303444] [-3991030.54681077] [2610108.35568405]
 _target value: d55c2495bf1d50412de5fd45fb724ec10c0e872ddee94341
 ```
 
-
-
+Planen nå var å:
+* Patche bytene i `_target` ved hjelp av "Bytes"-visningen til Ghidra
+* Lagre firmwaren og overføre den til aurum.
+* Signere filen ved å bruke `signer` og `privkey.pem`
+* Laste opp fila
+* Lage shellcode som flashet ubåt 1 med vår nye firmware
+* Utføre en simulering, og se hva som skjer
 
 
 

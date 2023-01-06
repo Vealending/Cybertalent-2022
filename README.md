@@ -602,6 +602,8 @@ Ny fil: /home/login/2_oppdrag/worst_case_scenario.jpg
 
 ## 2.13_findflag
 
+Jeg reverse engineeret `/usr/bin/konekt`, og fant ut at den fungerte som en wrapper for en tjeneste som kjørte på serveren `mad`, port 1337.
+
 
 
 
@@ -619,9 +621,9 @@ Deretter utfører den en bitvis venstre skyving på `_history.0` og lagrer resul
 Lettere sagt: Opp til 8 av bokstavene vi skriver inn blir lagret i `_history.0`.
 
 `0x726f6f646b636162` er hex for `roodkcab`, som er backdoor baklengs.
-Når `_history` innheolder den verdien, så blir privilegiet vår forhøyet til `Developer`.
+Når `_history` inneholder den verdien, så blir privilegiet vår forhøyet til `Developer`.
 
-Nå som vi er `Developer` så kan vi rename brukeren vår. Grunnet feil i programvare (som vil ta litt for mye tid å forklare), så får vi `SYSTEM` privilegier om vi kaller oss `!`.
+Nå som vi er `Developer` har vi tilgang til å rename brukeren vår. Grunnet feil i programvare (som vil ta litt for mye tid å forklare), så får vi `SYSTEM` privilegier om vi kaller oss `!`.
 
 Vi er nå priviligert nok til å kjøre programmer, og når vi kjører `findflag.prg` får vi opp dette flotte bildet:
 
@@ -640,8 +642,106 @@ Herlig! Vi har nå lov til å kjøre programmer. Kan du bruke dette til noe?
 
 ## 2.14_multiplier
 
-Koden er basert på:
-https://asecuritysite.com/ecdsa/ecd5
+`history` viste oss dette:
+
+```bash
+1  ls -lah
+2  which signer
+3  signer --help
+4  echo "Testing testing" > test.txt && signer --file-name test.txt --key-file privkey.pem --rng-source urandom
+5  rm test.txt
+6  konekt
+7  signer --file-name missile.1.3.37.fw --key-file privkey.pem --rng-source urandom
+8  mv missile.1.3.37.fw_signed missile.1.3.37.fw
+9  konekt
+10 rm privkey.pem missile.1.3.37.fw
+```
+
+`signer` blir brukt for å signere to filer, `test.txt` og `missile.1.3.37.fw`. Dette gjøres med en private key, `privkey.pem`, som blir slettet etter bruk.
+
+Hjelp-menyen nevner ECDSA, og hinter til at secp256k1-kurven blir benyttet:
+
+```bash
+user@aurum:~$ signer --help
+Sign a file with ECDSA
+
+Usage: signer [OPTIONS] --file-name <FILE_NAME> --key-file <KEY_FILE>
+
+Options:
+  -f, --file-name <FILE_NAME>    Path to the file to sign
+  -k, --key-file <KEY_FILE>      PEM-file containing the secp256k1 private key
+  -r, --rng-source <RNG_SOURCE>  RNG seed source (one of Clock, Urandom) [default: Urandom]
+  -h, --help                     Print help information
+```
+
+Jeg lagde min egen privatnøkkel, signerte to filer med forskjellig innhold, og sammenlignet signaturene:
+
+```bash
+user@aurum:~$ openssl ecparam -genkey -name secp256k1 -out privkey.pem -param_enc explicit
+
+user@aurum:~$ echo -n aaaaaaaaaaaaaaaa > a.txt && signer --file-name a.txt --key-file privkey.pem --rng-source urandom
+File size: 16 bytes
+Signature: Signature { r: 17211542253021086784505659283610982505828311641993563606189014132281847868803, s: 101470930953263482905196496644008688681262853128827165933802638504190043123950 }
+
+user@aurum:~$ echo -n bbbbbbbbbbbbbbbb > b.txt && signer --file-name b.txt --key-file privkey.pem --rng-source urandom
+File size: 16 bytes
+Signature: Signature { r: 17211542253021086784505659283610982505828311641993563606189014132281847868803, s: 89169711667094524674132738496910071433093664457918580439307144153630819379727 }
+
+user@aurum:~$ cat a.txt_signed | hd
+00000000  61 61 61 61 61 61 61 61  61 61 61 61 61 61 61 61  |aaaaaaaaaaaaaaaa|
+00000010  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
+00000020  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
+00000030  e0 56 82 fc 14 07 3f c8  7e db 80 9d 79 af 25 c0  |.V....?.~...y.%.|
+00000040  84 7d 1b 1e 3b 49 6b bd  cf 18 69 60 8c 86 70 ee  |.}..;Ik...i`..p.|
+
+user@aurum:~$ cat b.txt_signed | hd
+00000000  62 62 62 62 62 62 62 62  62 62 62 62 62 62 62 62  |bbbbbbbbbbbbbbbb|
+00000010  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
+00000020  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
+00000030  c5 24 44 ad b4 c3 94 4c  4e 7e 72 35 cf ee 6c 08  |.$D....LN~r5..l.|
+00000040  95 b3 f6 b3 fe 63 76 00  2a ec 4b ee 1b 5e 6a 0f  |.....cv.*.K..^j.|
+```
+
+`r` har samme verdi over flere signeringer. Dette er veldig dårlig kryptografimessig, men veldig bra for oss. `r = k * G`, hvor `k` er tiltenkt å være en tilfeldig verdi hver gang. Siden den er statisk er det mulig for oss å regne ut privatnøkkelen.
+
+Jeg prøvde å reverse engineere `signer` for å finne ut hvorfor dette skjedde, men det ga meg ingenting (bortsett fra redusert livsgnist av å måtte reversere kompilert Rust-kode).
+
+Lastet ned `missile.1.3.37.fw` og sammenlignet signaturen med `test.txt_signed` for å sjekke om det samme fenomenet hadde skjedd ved den tidligere signeringen:
+
+```bash
+user@aurum:~$ tail -c 64 test.txt_signed | hd
+00000000  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
+00000010  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
+00000020  36 8b f0 ed b4 2c 04 ac  d8 64 9b aa d7 c4 fd 9b  |6....,...d......|
+00000030  23 73 db 47 3d 61 32 94  4b 80 0b 6d 7e ce 7d 16  |#s.G=a2.K..m~.}.|
+
+user@aurum:~$ tail -c 64 missile.1.3.37.fw | hd
+00000000  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
+00000010  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
+00000020  b7 09 74 8b 70 f4 18 46  e6 32 af c7 04 f3 8d 9c  |..t.p..F.2......|
+00000030  53 fb 50 94 a3 c8 6f 2f  da 97 a7 41 3e 7a 44 90  |S.P...o/...A>zD.|
+```
+
+Herlig! `r`-verdiene er identiske.
+
+Brukte Python for å ekstrahere privatnøkkelen. 
+Skriptet ligger [her](crypto/same_k_recover_privkey.py). Matten er basert på [denne siden](https://asecuritysite.com/ecdsa/ecd5).
+
+Output:
+
+```
+r1: 17211542253021086784505659283610982505828311641993563606189014132281847868803
+r2: 17211542253021086784505659283610982505828311641993563606189014132281847868803
+h1: 53558879788905805671068674208647963498387261713450127955763892603805320644988
+
+s1: 24672148393105490807172642003357033928250921460564351943433773766105747062038
+s2: 82789957276224960427052465459370715358048161416963169362889803353386861085840
+h2: 27567713526363642182323369520225315448427582916364134856575038991303938254239
+
+Private key: 114798114433974422739242357806023105894899569106244681546807278823326360043821
+```
+
+Flagget er privatnøkkelen.
 
 ```text
 Kategori: 2. Oppdrag
@@ -655,6 +755,10 @@ Dette ser ut til å være privatnøkkelen som de bruker i ECDSA-signeringen sin.
 ---
 
 ## 2.15_firmware_staged
+
+Jeg lagde [et par skripts](konekt_scripts/) for å interagere med `mad:1337` via Python sockets. Dette tok tiden for å laste opp/ned filer fra minutter ned til noen sekunder. Jeg kunne også lett kopiere og lime inn shellcoden som jeg genererte med pwntools til aurum. Dette gjorde feilsøkingen av shellcoden mye raskere.
+
+
 
 ```text
 Kategori: 2. Oppdrag

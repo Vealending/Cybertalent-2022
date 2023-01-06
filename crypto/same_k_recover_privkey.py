@@ -21,7 +21,7 @@ order = ecdsa.SECP256k1.generator.order()
 valinv = ecdsa.numbertheory.inverse_mod(r1 * (s1 - s2), order)
 priv_key = ((s2 * h1 - s1 * h2) * (valinv)) % order
 
-print ("Private key: ", priv_key)
+print ("Private key:", priv_key)
 
 with open("privkey.pem", "wb") as f:
     f.write(ecdsa.SigningKey.from_secret_exponent(priv_key, curve=ecdsa.SECP256k1).to_pem())

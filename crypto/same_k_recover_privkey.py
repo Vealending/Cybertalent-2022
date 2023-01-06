@@ -15,7 +15,7 @@ def extract_r_s(filename):
 r1, s1, h1 = extract_r_s("test.txt_signed")
 r2, s2, h2 = extract_r_s("missile.1.3.37.fw")
 
-print(f"r1: {r1}\nr2: {s1}\nh1: {h1}\n\ns1: {r2}\ns2: {s2}\nh2: {h2}\n")
+print(f"r1: {r1}\ns1: {s1}\nh1: {h1}\n\nr2: {r2}\ns2: {s2}\nh2: {h2}\n")
 
 order = ecdsa.SECP256k1.generator.order()
 valinv = ecdsa.numbertheory.inverse_mod(r1 * (s1 - s2), order)

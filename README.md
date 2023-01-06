@@ -401,7 +401,10 @@ Command c = (Command) in.readObject();
 ```
 
 Selv om det mottatte objektet blir kastet til et `Command` object, så vil `readObject()` bli eksekvert før dette.
-Det spiller da ingen rolle om denne kastingen feiler, vi bryr oss bare om `readObject()`.
+Det spiller da ingen rolle om denne kastingen feiler, vi bryr oss bare om hva som skjer i `readObject()`.
+
+
+
 
 ```text
 Kategori: 2. Oppdrag
@@ -420,6 +423,7 @@ Ny fil: /home/login/2_oppdrag/sshkey_cloud-hq
 
 ## 2.10_infrastruktur
 
+På `cloud-hq-79` finner vi kildekoden til skadevaren. Blant denne ligger det en fil kalt `GenCommand.java`. Denne inneholder koden og privatnøkkelen man trenger for å lage kommandoer, og et flagg.
 
 ```text
 Kategori: 2. Oppdrag
@@ -440,7 +444,7 @@ Ny fil: /home/login/2_oppdrag/INTREP-2.txt
 
 ## 2.11_aurum_shell
 
-Vi bruker samme exploit som for 2.09, men bytter ut ID'en til aurum sin.
+Vi bruker samme utnyttelse som for 2.09, men bytter ut ID'en til aurum sin.
 Flagget ligger godt synlig i `/home/user/FLAG`.
 
 ```text
@@ -605,7 +609,7 @@ Ny fil: /home/login/2_oppdrag/worst_case_scenario.jpg
 Jeg reverse engineeret `/usr/bin/konekt`, og fant ut at den fungerte som en wrapper for en tjeneste som kjørte på serveren `mad`, port 1337.
 
 
-
+I funksjonen `ui_read_key()` finner vi følgende:
 
 ```C
 input = read(*(_session + 1), &read_buf, 1);
@@ -617,8 +621,8 @@ if (input == 1) {
 ```
 
 Den leser en enkelt byte med data fra `read()`, og lagrer den i en buffer kalt `read_buf`. 
-Deretter utfører den en bitvis venstre skyving på `_history.0` og lagrer resultatet tilbake i `_history.0`, før den ORer den med `read_buf`. Change this #######
-Lettere sagt: Opp til 8 av bokstavene vi skriver inn blir lagret i `_history.0`.
+Deretter utfører den en bitvis venstre skyving på `_history.0` før den ORer den med `read_buf`. Resultatet blir lagret tilbake i `_history.0`.
+Lettere sagt: de siste 8 bokstavene vi har skrevet inn er lagret i `_history.0`.
 
 `0x726f6f646b636162` er hex for `roodkcab`, som er backdoor baklengs.
 Når `_history` inneholder den verdien, så blir privilegiet vår forhøyet til `Developer`.
@@ -731,10 +735,10 @@ Output:
 
 ```
 r1: 17211542253021086784505659283610982505828311641993563606189014132281847868803
-r2: 17211542253021086784505659283610982505828311641993563606189014132281847868803
+s1: 24672148393105490807172642003357033928250921460564351943433773766105747062038
 h1: 53558879788905805671068674208647963498387261713450127955763892603805320644988
 
-s1: 24672148393105490807172642003357033928250921460564351943433773766105747062038
+r2: 17211542253021086784505659283610982505828311641993563606189014132281847868803
 s2: 82789957276224960427052465459370715358048161416963169362889803353386861085840
 h2: 27567713526363642182323369520225315448427582916364134856575038991303938254239
 
@@ -756,7 +760,7 @@ Dette ser ut til å være privatnøkkelen som de bruker i ECDSA-signeringen sin.
 
 ## 2.15_firmware_staged
 
-Jeg lagde [et par skripts](konekt_scripts/) for å interagere med `mad:1337` via Python sockets. Dette tok tiden for å laste opp/ned filer fra minutter ned til noen sekunder. Jeg kunne også lett kopiere og lime inn shellcoden som jeg genererte med pwntools til aurum. Dette gjorde feilsøkingen av shellcoden mye raskere.
+Jeg lagde [et par skript](konekt_scripts/) for å interagere med `mad:1337` via Python sockets. Dette tok tiden for å laste opp/ned filer fra flere minutter ned til noen sekunder. Jeg kunne også lett kopiere og lime inn shellcoden som jeg genererte med pwntools til aurum. Dette gjorde feilsøkingen av shellcoden mye raskere.
 
 
 
@@ -780,13 +784,13 @@ Jeg brukte Ghidra for å reverse-engineere, da IDA kun støtter ARM om man er s�
 
 I funksjonen `boot_banner()` kan vi se følgende:
 
-```
+```C
 printk("*** Booting Zephyr OS build zephyr-v3.2.0-2532-g5fab7a5173f6 ***\n");
 ```
 
 Zephyr OS er et real-time operativsystem laget for innebygde enheter, og best av alt; det er open-source. Det er en stor hjelp å kunne slå opp definisjonene på datastrukturer, funksjoner og datatyper mens man reverse-engineerer.
 
-Jeg brukte en god stund på å navigere den dekompilerte koden, og stirret på de forskjellige funksjonene til de ga noenlunde mening.
+Jeg brukte en god stund på å navigere den dekompilerte koden og å stirre på de forskjellige funksjonene til de ga noenlunde mening.
 
 I "Memory Map"-visningen i Ghidra kan vi se et minnesegment som heter `.rocket_parameters`. 
 Innunder denne finner vi etikettene `_tof` og `_target`. Disse navnene er vi bekjent med fra missil-listen vi fikk i [2.12_missile_targets](#212_missile_targets).
@@ -813,7 +817,7 @@ struct zsl_vec {
 typedef double zsl_real_t;
 ```
 
-Viser seg at `_target` er et array bestående av av 3 `zsl_real_t`, som er av datatypen `double`.
+Viser seg at `_target` er et array bestående av 3 `zsl_real_t`, som er av datatypen `double`.
 Brukte python til å unpacke bytene:
 
 ```python
@@ -1009,7 +1013,7 @@ Jeg lagde da 5 firmwares, hvor alle hadde samme `_target`, men forskjellig `_tof
 ```bash
 ```
 
-Etter gode 2 ekte timer med simulering hadde alle 5 missilene ~~truffet~~ bommet, og 5 flagg hadde dukket opp.
+Etter gode 2 ekte timer med simulering hadde alle 5 missilene ~~truffet~~ bommet, og 5 flagg dukket pent opp underveis.
 
 ```text
 Kategori: 2. Oppdrag

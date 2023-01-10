@@ -1,7 +1,11 @@
 ﻿# Cybertalent-2022
 
-Cybertalent er 
+Cybertalent er en årlig CTF holdt av Etteretningstjenesten. Den varer normalt i én måned, og inneholder 3 kategorier:
+1. Grunnleggende
+2. Oppdrag
+3. Utfordringer
 
+Denne writeup'en tar for seg oppdraget. Konteksten rundt oppdraget vil du finne [her](kontekst).
 
 ---
 

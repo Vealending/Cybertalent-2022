@@ -1,7 +1,11 @@
 {
   "ExpandedNodes": [
-    ""
+    "",
+    "\\contekst",
+    "\\crypto",
+    "\\konekt_scripts",
+    "\\missile_scripts"
   ],
-  "SelectedNode": "\\C:\\Users\\nilhol\\Source\\Repos\\Cybertalent-2022",
+  "SelectedNode": "\\README.md",
   "PreviewInSolutionExplorer": false
 }

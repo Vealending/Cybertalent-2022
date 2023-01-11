@@ -105,14 +105,14 @@ def desired_target_as_vector(sphere, target):
 
 def get_distance(origin, target):
 
-    distance, b, c = origin.distance_and_azimuth(target)
+    distance, _, _ = origin.distance_and_azimuth(target)
     return distance
 
 
 def distance_to_missile_targets(sphere):
 
     data = []
-    for submarine, missile_no, tof, target in missile_data:
+    for submarine, _, tof, target in missile_data:
         submarine_data = submarine_coordinates[submarine]
         submarine_location = sphere.GeoPoint(latitude=submarine_data[0], longitude=submarine_data[1], z=0, degrees=True)
         missile_target = nv.ECEFvector(target, sphere).to_geo_point()
@@ -127,7 +127,7 @@ def distance_to_missile_targets(sphere):
 def distance_to_desired_target(sphere, target_coordinates):
 
     distances = set()
-    for submarine, missile_no, tof, target in missile_data:
+    for submarine, _, _, _ in missile_data:
         submarine_data = submarine_coordinates[submarine]
         submarine_location = sphere.GeoPoint(latitude=submarine_data[0], longitude=submarine_data[1], z=0, degrees=True)
         desired_target = sphere.GeoPoint(latitude=target_coordinates[0], longitude=target_coordinates[1], z=0, degrees=True)
@@ -160,12 +160,12 @@ def ecef_vector_to_lat_lon(vector):
     return lat, lon
 
 
-def create_map(sphere):
+def create_map():
 
     map = folium.Map(location=[50, 5], zoom_start=4)
     map_name = "map.html"
 
-    for submarine, missile_no, tof, target in missile_data:
+    for submarine, _, _, target in missile_data:
         submarine_data = submarine_coordinates[submarine]
         missile_target = ecef_vector_to_lat_lon(target)
 
@@ -184,7 +184,7 @@ def main():
     distance_to_missile_targets(earth)
     desired_target_as_vector(earth, desired_target)
     distance_to_desired_target(earth, desired_target)
-    create_map(earth)
+    create_map()
 
 
 if __name__ == "__main__":

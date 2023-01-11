@@ -173,7 +173,10 @@ public class Client implements AutoCloseable {
 
     public static void main(String[] args) {
 
+        read_Commands();
+        read_Config();
         make_config();
+
         System.exit(0);
 
         try (Client client = new Client()) {

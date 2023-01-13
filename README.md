@@ -1564,7 +1564,6 @@ På et moderne, vanlig system så vil denne typen utnyttelser gjennom symbolske 
 Denne beskyttelsen har stoppet meg flere ganger tidligere, men jeg er dum/dedikert nok til å bruke et flersifret antall timer på dette *just in case*. :)
 
 For å teste om våre utnyttelsesprimitiv kan følge symbolske koblinger utenfor `/tmp`, så gjorde jeg et lite forsøk. 
-Før jeg kjørte dette skriptet gjorde jeg en `chmod 777 -R /home/archive`
 
 Jeg kjørte følgende skript på `shady-aggregator`, etter å ha gjort hjemmemappen til `archive` tilgjengelig for alle (`chmod 777 -R /home/archive`):
 

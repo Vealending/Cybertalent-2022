@@ -575,7 +575,7 @@ Ny fil: /home/login/2_oppdrag/INTREP-2.txt
 
 ## 2.11_aurum_shell
 
-Vi bruker samme utnyttelse som for 2.09, men bytter ut ID'en til `aurum` sin.
+Vi bruker samme utnyttelse som for [2.09](#209_cloud-hq), men bytter ut ID'en til `aurum` sin.
 Flagget ligger godt synlig i hjemmemappen.
 
 ```text

@@ -438,7 +438,7 @@ Etter mye leting på nettet kom jeg over en sårbarhetskategori som heter Java D
 
 I Config.java er det en `readObject()` metode som håndterer hvordan et Config-objekt skal leses inn. 
 
-`readObject()` er en standardmetode som er tilgjengelig i alle objekter som implementerer interfacet Serializable, men den kan også defineres manuelt av utvikleren. 
+`readObject()` er en standardmetode som er tilgjengelig i alle objekter som implementerer interfacet `Serializable`, men den kan også defineres manuelt av utvikleren. 
 Dette kan være nyttig for å implementere ytterligere logikk for gjenoppretting av objekter.
 
 I denne ser vi at den går gjennom alle `pendingCommands`, og kjører de hvis tiden er inne. Dette skjer da altså uten noe som helst verifikasjon gjennom ECDSA.
